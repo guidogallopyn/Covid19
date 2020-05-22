@@ -1,0 +1,604 @@
+---
+title: "Epidemiology - Covid19"
+output: html_notebook
+---
+
+```{r}
+##################################
+# packages and working directory
+##################################
+
+library(tidyverse)
+library(scales)
+library(kableExtra)
+library(gganimate)
+if(!require(deSolve)) {
+  install.packages("deSolve")
+  require(deSolve)
+}
+library(lamW)
+
+setwd(tempdir())
+
+```
+
+# Introduction
+
+The SIR model is a simple epidemiology model (ref Kermack and McKendrick) that predicts how an infectious disease is transmitted through a population over time. The model divides the total population in three types of hosts, Susceptible hosts, Infected hosts and Recovered hosts. Susceptible hosts can get infected by the desease at an infection rate $\beta$ specific to the disease and infected hasts revover at a certain recovery rate $\gamma$.  
+
+```
+graph
+```
+
+# Questions
+
+- Suppose we start with a population of almost all susceptibles plus a small number of infectives. Will the number of infectives increase substantially, producing an epidemic, or will the disease fizzle out?
+- Assuming there is an epidemic, how will it end? Will there still be any susceptibles left when it is over?
+- How long will the epidemic last?
+
+
+# SIR Model
+
+### Variables
+
+- $t$ : time
+- $s$ : fraction of susceptible hosts in total population
+- $i$ : fraction of infected hosts in total population
+- $r$ : fraction of recovered hosts with immunity in total population
+- $\beta$ : infection rate
+- $\gamma$ : recovery rate
+
+$s$ , $i$ and $r$ are functions of the time $t$, and they change according to a system of differential equations.
+
+### Conditions
+$$
+\begin{equation*}
+0\leq s( t) ,\ i( t) ,\ r( t) \ \leq \ 1
+\end{equation*}
+$$
+### Identity
+$$
+\begin{equation}
+s( t) \ +\ i( t) \ +\ r( t) \ =\ 1
+\end{equation}
+$$
+
+### SIR Differential Equations
+
+$$
+\begin{align}
+ \frac{ds}{dt} & = - \beta \ s\ i &  s(0) & = s_{0}\\
+ \frac{di}{dt} & = \beta \ s\ i\ -\ \gamma \ i & i(0) & = i_{0}\\
+ \frac{dr}{dt} & = \gamma \ i & r(0) &= r_{0}
+\end{align}
+$$
+
+### Assumptions
+
+- no growth or decline in host population
+- stationary and homogenious infection and recovery rates
+- zero time delay in infection and recovery
+- all recovered hosts remain immune
+- no vaccination ( $r_{0} = 0$ )
+
+**Note**
+
+equations can not be solved in terms of standard mathematical functions, instead numerical methods and qualitative analysis can be done 
+
+### Numerical Methods to solve SIR ODEs
+
+```{r}
+# model specification, choose a set of parameters and intial conditions
+parameters <- c(beta = 0.1, gamma = 0.03)
+state <- c(S = 1-10^-6, I = 10^-6, R = 0)
+
+SIR <-function(t, state, parameters) 
+ with(as.list(c(state, parameters)),
+ 		{ dS <- -beta*S*I
+ 		 	dI <- beta*S*I - gamma*I
+ 		 	dR <- gamma*I
+ 		 	list(c(dS, dI, dR))
+ 		})
+
+
+# model application
+de_solve <- function (y, times, func, parms, ...) {
+	ode(y = y, times = times, func = func, parms = parms, ...) %>% 
+	as.data.frame %>%
+	pivot_longer(cols=-time, names_to='group', values_to="value")
+} 
+
+times <- seq(0, 500, by = 0.1)
+de_solve(y = state, times = times, func = SIR, parms = parameters) -> SIRout
+
+# show solution (see plotmath)
+
+ggplot(data=as.data.frame(t(parameters))) +
+  geom_line(data=SIRout, aes(time, value, color=group)) +
+	geom_text(aes(x=0, y=.8, label=paste("beta ==", round(beta,2))), parse=T, hjust=0) +
+	geom_text(aes(x=0, y=.75, label=paste("gamma ==",round(gamma,2))), parse=T, hjust=0) +
+	geom_text(aes(x=0, y=.7, label=paste("R[0] ==", round(beta/gamma,2))),  parse=T, hjust=0)
+```
+
+### Linearisation
+
+consider $c=1-s$ 
+$$
+\begin{cases}
+\frac{ds}{dt} \ =\ -\frac{dc}{dt} \ =-\beta \ ( 1-c) \ i=-\beta \ i\ +\beta \ c\ i\\
+\frac{di}{dt} \ =\ \ \beta \ ( 1-c) \ i\ -\ \gamma \ i\ =\ ( \beta \ -\gamma ) i\ -\beta \ c\ i\\
+\frac{dr}{dt} \ =\ \gamma \ i
+\end{cases}
+$$
+
+
+When $c=1-s \lll 1$ and $i \lll 1$, then non-linear term in $c\ i$ becomes very small and is ignored, this is the case at outbreak when $t \lll , i_{0} \approx \ 0$ and $s_{0} \approx 1$
+
+
+$$
+\begin{cases}
+\frac{di}{dt} \ =( \beta \ -\gamma ) \ i & \rightarrow  & i( t) =i_{0} \ e^{( \beta -\gamma ) \ t}\\
+\frac{dr}{dt} \ =\ \gamma \ i & \rightarrow  & r( t) =r_{0} +\frac{\gamma \ i_{0}}{\beta \ -\gamma } \ \left( e^{( \beta -\gamma ) \ t} -1\right)\\
+\frac{dc}{dt} =\beta \ i\  & \rightarrow  & c( t) =\frac{\beta \ i_{0}}{\beta \ -\gamma } \ \left( e^{( \beta -\gamma ) \ t} -1\right) +1-s_{0}\\
+ &  & s( t) =s_{0} \ -\frac{\beta \ i_{0}}{\beta \ -\gamma } \ \left( e^{( \beta -\gamma ) \ t} -1\right)
+\end{cases}
+$$
+
+at outbreak, infections in a SIR epedemic evolve exponentially with key growth parameter $\beta -\gamma$
+
+
+$$
+\begin{cases}
+\beta > \gamma  & \rightarrow  & epidemic\\
+\beta = \gamma  & \rightarrow  & stable\\
+\beta < \gamma  & \rightarrow  & disease\ dies\ out
+\end{cases}
+$$
+
+Note phase plane is linear line with $0 \leqslant i,s\ \leqslant 1$
+
+$$
+( \beta - \gamma )(s-s_{0}) + \beta (i - i_{0}) = 0
+$$
+
+### Question 1: Outbreak
+
+On outbreak with no immunity/vaccination: $t=0$, $r_{0} = 0$ and $i_{0} + s_{0} = 1$ $\rightarrow$ $s_{0} \approx 1$, $i_{0} \lll 1$
+
+- $s$ is a monotomously decreasing function starting at $s_{0}$ when $t=0$ and ending at a value $s_{\infty } \geq 0$ 
+
+- $r$ is monotomously increasing function starting at $t=0$ at $r_{0}$ and ending at a value $r_{\infty } \leq 1$ 
+
+- $i$ is more complicated and depends on $\beta$ and $\gamma$
+
+$$
+\begin{equation*}
+\frac{di}{dt} = ( \beta \ s_{0} -\ \gamma)\ i_{0}
+\end{equation*}
+$$
+
+Initial infection slope at outbreak $s_{0} \approx 1$ $\rightarrow$ $di\ /\ dt = ( \beta -\gamma )\ i_{0}$
+
+
+define: $R_{0} = \beta / \gamma$ as the Basic Reproduction Number 
+
+$$
+\begin{align}
+ & < 0 &  & R_{0} >1 &\ i\nearrow &\ epidemic\\
+\left(\frac{di}{dt}\right)_{t=0} & =0 & & R_{0}=1 &\ i\rightarrow &\ stable\\
+ & < 0 & & R_{0} < 1 & i\searrow  &\ infection\ dies\ out
+\end{align}
+$$
+Consider the epidemid case $R_{0} > 1$
+
+After initial outbreak: 
+
+- as $s$ decreases, $\frac{di}{dt} = ( \beta \ s -\ \gamma)\ i$ also decreases until $0$, this is a maximum $i=i_{peak}$, we'll derive $\displaystyle i_{peak}$ in the next section
+
+- $\frac{di}{dt} =0$ when $\beta \ s -\ \gamma = 0$ or $s = \gamma / \beta = 1 / R_0$
+
+- after peak infection $i_{peak}$, $s$ further decreases but $\frac{di}{dt} < 0$ resulting in $i$ decrease until $i=0$
+
+
+#### Infection during epidemic
+
+elimination of $t$ from ODEs, gives a seperarable ODE in $s$ and $i$
+
+$$
+\begin{equation*}
+\ \frac{di}{ds} =\frac{\frac{di}{dt}}{\frac{ds}{dt}} \ \ =\frac{\beta \ s\ i\ -\ \gamma \ i}{-\ \beta \ s\ i} \ =\ \frac{\gamma \ }{\beta }\frac{1\ }{s} \ -1\ \ =\ \frac{1\ }{R_{0} \ s} \ -1
+\end{equation*}
+$$
+
+$$
+\begin{align}
+\int di & = \int \left( \frac{1}{R_0 \ s} \ -1 \right) ds \ + \ C \\
+i &=\ \frac{1}{R_{0}} ln( s) \ -s\ +C\\
+with\ & C = s_0 + i_0 -\frac{1\ }{R_{0}} ln( s_{0})= 1 -\frac{1\ }{R_{0}} ln( s_{0})\\
+i &=\frac{1}{R_{0}} ln\left(\frac{s}{s_{0}}\right) \ -s\ +1
+\end{align}
+$$
+
+
+
+```{r,warning=FALSE}
+SIR.pp <- function(x, R0=1.5) 1-x+log(x) /R0
+
+ggplot() +
+	stat_function(aes(color = "1.2"), fun = SIR.pp, args=list(R0=1.2), show.legend =T, xlim = c(0, 1)) +
+	stat_function(aes(color = "1.5"), fun = SIR.pp, args=list(R0=1.5), show.legend =T, xlim = c(0, 1)) +
+  stat_function(aes(color = "2"), fun = SIR.pp, args=list(R0=2), show.legend =T, xlim = c(0, 1)) +
+  stat_function(aes(color = "3"), fun = SIR.pp, args=list(R0=3), show.legend =T, xlim = c(0, 1)) +
+  stat_function(aes(color = "4"), fun = SIR.pp, args=list(R0=4), show.legend =T, xlim = c(0, 1)) +
+  stat_function(aes(color = "5"), fun = SIR.pp, args=list(R0=5), show.legend =T, xlim = c(0, 1)) +
+  scale_x_continuous(name="s",limits = c(0,1)) +
+  scale_y_continuous(name="i",limits = c(0,0.5)) +
+  scale_color_manual(name = "R[0]", values = c("purple","blue","green","yellow","orange","red"))
+```
+
+This is the (S,I) phase plane
+
+- at $t=0, s \approx 1$ and $i \approx 0$   
+- as $t$ increases, $s$ decreases and $i$ increases
+- as $t$ increases, $i$ reaches a maximum and then declines
+- as $t \rightarrow \inf$, $i$ becomes 0, with a maxium $s_\inf$
+
+
+
+#### peak infection
+
+derivation of $i_{peak}$
+
+$$
+\begin{align}
+\frac{di}{dt} &= ( \beta \ s_{peak} -\gamma) \ i_{peak} = 0 \\
+s_{peak} &= \gamma \ /\ \beta \ = \ 1 / R_0 \\
+i &= 1 - s + \frac{1}{R_0} ln\left(\frac{s}{s_0}\right) \\
+i_{peak} &= 1 - s_{peak} + \frac{1}{R_0} \ln(\frac{s_{peak}}{s_0}) \\
+ &= 1 - \frac{1}{R_0} -\frac{1}{R_0} \ln\ (R_0\ s_0) \\
+ &= 1\ -\frac{1+ln(R_0\ s_0)}{R_0}\\
+i_{peak} &\approx 1\ -\frac{1+ \ln(R_0)}{R_0}
+\end{align}
+$$
+
+```{r,warning=FALSE}
+ggplot() +
+    stat_function(aes(color = "I_peak"), fun = function(x) 1-(1+log(x))/x, show.legend =F, xlim = c(1, 5)) +
+    scale_x_continuous(name="R0",limits = c(1,NA)) +
+		scale_y_log10(name="i peak",limits = c(10^-4,NA), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+    scale_color_manual(name = "Function", values = c("blue"))
+```
+
+
+### Question 2: How does epidemic end?
+
+
+##### Inverse: s in function of i
+
+$s$ has two solutions given $i$, one before the infecion peal, and one after
+
+$$
+\begin{align}
+s &=- \frac{1}{R_{0}} \ W_n\left( -s_{0} \ R_{0} \ e^{-R_{0}( 1-i)}\right) \\
+\end{align}
+$$	
+
+with $W_n$ the [Lambert W function](https://mathworld.wolfram.com/LambertW-Function.html)  (see appendix)
+
+
+##### Epidemic ends when $i=0$
+
+$$
+\begin{cases}
+\begin{align}
+s_{\infty} &= -\frac{1}{R_{0}} \ W_0\left( -s_{0} \ R_{0} \ e^{-R_{0}}\right)\\
+i_{\infty} &= 0\\
+r_{\infty} &= 1 +\frac{1}{R_{0}} \ W_0\left( -s_{0} \ R_{0} \ e^{-R_{0}}\right)\\
+\end{align}
+\end{cases}
+$$	
+
+```{r,warning=FALSE}
+SInf <- function(x) -1/x*lambertW0(-x*exp(-x))
+RInf <- function(x) 1 - SInf(x)
+
+ggplot() +
+    stat_function(aes(color = "S_Inf"), fun = SInf, show.legend =T, xlim = c(1.0001, 5)) +
+    stat_function(aes(color = "R_Inf"), fun = RInf, show.legend =T, xlim = c(1.0001, 5)) +
+    scale_x_continuous(name="R0",limits = c(1,NA)) +
+    scale_y_continuous(name="S_inf", limits = c(0,NA)) +
+    scale_color_manual(name = "Function", values = c("blue","green"))
+```
+
+### Question 3: Time duration, hw long until peak, how long until end?
+
+$$
+\begin{align}
+\frac{ds}{dt} &= -\ \beta \ s\ \left( 1 - s + \frac{1}{R_0} ln\left(\frac{s}{s_0} \right) \right)\\
+\end{align}
+$$
+
+
+$$
+\begin{align}
+t  &=  \frac{1}{\beta} \int ^{s_0}_{s} \frac{ds}{s\left(\frac{1}{R_0} \ln(s/s_0) - s + 1 \right)}\\
+   &=  \frac{1}{\gamma} \int ^{s_0}_{s} \frac{ds}{s\left(\ \ln(s/s_0) - R_0(s -1) \right)}\\
+\end{align}
+$$
+
+integral has no solution in terms of standard mathematical functions
+
+```{r,warning=FALSE}
+func <- function(s, R0=1.5, s0=1.0) 1/(s*log(s/s0)+R0*s*(1.0-s))
+tfs  <- function(s, R0=1.5, s0=1.0) sapply(s, function(s) integrate(func,lower=s, upper=s0, R0=R0, s0=s0)[['value']]) 
+i0 <- 10^-5
+
+ggplot() +
+	  stat_function(aes(color="R0=1.2"), fun = tfs, args=list(R0=1.2, s0=1-i0), xlim = c(SInf(1.2)+i0, 1-i0), show.legend =T) +
+    stat_function(aes(color="R0=1.5"), fun = tfs, args=list(R0=1.5, s0=1-i0), xlim = c(SInf(1.5)+i0, 1-i0), show.legend =T) +
+    stat_function(aes(color="R0=2"), fun = tfs, args=list(R0=2, s0=1-i0), xlim = c(SInf(2)+i0, 1-i0), show.legend =T) +
+    stat_function(aes(color="R0=3"), fun = tfs, args=list(R0=3, s0=1-i0), xlim = c(SInf(3)+i0, 1-i0), show.legend =T) +
+    stat_function(aes(color="R0=4"), fun = tfs, args=list(R0=4, s0=1-i0), xlim = c(SInf(4)+i0, 1-i0), show.legend =T) +
+    stat_function(aes(color="R0=5"), fun = tfs, args=list(R0=5, s0=1-i0), xlim = c(SInf(5)+i0, 1-i0), show.legend =T) +
+    scale_x_continuous(name="S",limits = c(0,1)) +
+    scale_y_continuous(name="gamma T", limits = c(0,NA)) +
+    scale_color_manual(name = "Function", values = c("purple","blue","green","yellow","orange","red")) +
+    coord_flip()
+```
+
+- how long until epidemic peak: $t_{peak}$ when $i= i_{peak},\ s = s_{peak} = 1/R_0$ 
+
+
+$$
+\begin{equation}
+t_{peak} = \frac{1}{\gamma} \int ^{s_0}_{\frac{1}{R_0}} \frac{ds}{s \left(\ \ln(s/s_0) - R_0(s -1) \right)}\\
+\end{equation}
+$$
+
+- how long until epidemic is over? define $i(t_{end}) = i_0$, same infection rate as on outbreak 
+
+$$
+\begin{align}
+s_{end} &= -\frac{1}{R_{0}} \ W_0 \left( -s_0 \ R_0 \ e^{-R_0 (1-i_0)} \right) \\
+        &= -\frac{1}{R_{0}} \ W_0 \left( -s_0 \ R_0 \ e^{-R_0 s_0} \right) \\
+t_{end} &= \frac{1}{\gamma} \int ^{s_0}_{s_{end}} \frac{ds}{s \left(\ \ln(s/s_0) - R_0(s -1) \right)}\\
+\end{align}
+$$
+
+
+```{r,warning=FALSE}
+i0<- 10^-5
+func <- function(s, R0=1.5, s0=1.0) 1/(s*log(s/s0)+R0*s*(1.0-s))
+tend <- function(R0, s0=1.0) sapply(R0, function(R0) integrate(func, lower=SInf(R0)+1-s0, upper=s0, R0=R0, s0=s0)[['value']]) 
+tpeak <- function(R0, s0=1.0) sapply(R0, function(R0) integrate(func, lower=1/R0, upper=s0, R0=R0, s0=s0)[['value']]) 
+
+
+ggplot() +
+    stat_function(aes(color="T_peak"), fun = tpeak, args=list(s0=1-i0), xlim = c(1,5), show.legend =T) +
+    stat_function(aes(color="T_end"),  fun = tend, args=list(s0=1-i0), xlim = c(1,5), show.legend =T) +
+    scale_x_continuous(name="R0",limits = c(1,5)) +
+    scale_y_continuous(name="gamma T", limits = c(0,100)) +
+    scale_color_manual(name = "Function", values = c("blue","green"))
+```
+
+
+
+```{r}
+##################################
+# SIR model for two populations with travel
+##################################
+# model specification
+parameters2 <- c(n1 = 300, beta1 = 0.01, gamma1 = 0.003, tau12=0.01, n2 = 1000, beta2 = 0.01,  gamma2 = 0.003, tau21=0.01)
+state2 <- c(S1 = 300-1, I1 = 1, R1 = 0, S2 = 1000, I2 = 0, R2 = 0)
+SIR2 <-function(t, state, parameters) 
+ with(as.list(c(state, parameters)),
+ 		{ dS1 <- -beta1*S1*I1/n1 - tau12*S1/n1 + tau21*S2/n2
+ 		  dS2 <- -beta2*S2*I2/n2 - tau21*S2/n2 + tau12*S1/n1
+ 		 	dI1 <- beta1*S1*I1/n1 - gamma1*I1 - tau12*I1/n1 + tau21*I2/n2
+ 		 	dI2 <- beta2*S2*I2/n2 - gamma2*I2 - tau21*I2/n2 + tau12*I1/n1
+ 		 	dR1 <- gamma1*I1 - tau12*R1/n1 + tau21*R2/n2
+ 		 	dR2 <- gamma2*I2 - tau21*R2/n2 + tau12*R1/n1
+ 		 	list(c(dS1, dI1, dR1, dS2, dI2, dR2))
+ 		})
+
+# model applications
+times <- seq(0, 5000, by = 1)
+de_solve(y = state2, times = times, func = SIR2, parms = parameters2) %>% 
+  ggplot(aes(time, value)) +
+  geom_line(aes(color=group)) +
+	geom_text(data=as.data.frame(t(parameters2)), aes(x=0, y=800, label=paste0("R0 = ", round(beta1/gamma1,2))), hjust=0)
+```
+
+# Appendix
+
+```{r,warning=FALSE}
+ggplot() +
+    stat_function(aes(color = "LambertW0"), fun = lambertW0, show.legend =T, xlim = c(-exp(-1), 2)) +
+    stat_function(aes(color = "LambertW-1"), fun = lambertWm1, show.legend =T, xlim = c(-exp(-1), -0.0001)) +
+    scale_x_continuous(limits = c(-1,2)) +  scale_y_continuous(limits = c(-5,1),breaks=-5:1) +
+    scale_color_manual(name = "Function", values = c("blue","green"))
+```
+
+See [Lambert function](https://en.wikipedia.org/wiki/Lambert_W_function)  
+
+
+### Definition
+$$
+\begin{equation*}
+y =W( x) \ \Leftrightarrow y e^y = x
+\end{equation*}
+$$
+
+for $x \in \mathbb{R}$ W is defined for $x > -1/e$ and for $-1/e< x < 0$ then $W$ is double valued $W_0$ and $W_{-1}$
+
+### Identities
+
+$$
+\begin{align*}
+ & W_{0} \left( xe^{x}\right) \ =x & x \geqslant -1\\
+ & W_{-1}\left( xe^{x}\right) \ =x & x \leqslant -1
+\end{align*}
+$$
+Other forms
+$$
+\begin{align}
+W( x) e^{W( x)} &=x \\
+\ln\ W( x) + W(x) &= \ln x 
+\end{align}
+$$
+
+### Solving equation
+
+$$
+\begin{align*}
+ & x - \alpha \ln\ x =\ C &  & 0 < \alpha < 1 \\
+ &  &  & 0 \leqslant x \leqslant 1
+\end{align*}
+$$
+
+trivial solution when $C=1$:  $x=1$ 
+
+$$
+\begin{gather}
+x\ -\alpha \ ln\ x =\ C \notag\\
+ \notag\\
+-\frac{x}{\alpha } +ln\ x\ =\ -\frac{C}{\alpha } \  \notag\\
+ \notag\\
+e^{-\frac{x}{\alpha } +ln\ x} =\ x\ e^{-\frac{x}{\alpha }} \ =\ e^{-\frac{C}{\alpha }} \  \notag\\
+ \notag\\
+-\frac{x}{\alpha } \ e^{-\frac{x}{\alpha }} \ =\ -\frac{1}{\alpha } e^{-\frac{C}{\alpha }} <0 \  \notag\\
+ \notag\\
+W_{k}\left( -\frac{x}{\alpha } \ e^{-\frac{x}{\alpha }}\right) \ =-\frac{x}{\alpha } \ =\ W_{k}\left( -\frac{1}{\alpha } \ e^{-\frac{C}{\alpha }}\right) \  \notag\\
+ \notag\\
+x\ =-\alpha \ W_{k}\left( -\frac{1}{\alpha } \ e^{-\frac{C}{\alpha }}\right)
+\end{gather}
+$$
+iow there are two solutions with 
+
+$$
+\begin{gather}
+-1/e < -\frac{1}{\alpha } \ e^{-\frac{C}{\alpha }} < 0\\
+1/e > \frac{1}{\alpha } \ e^{-\frac{C}{\alpha }} > 0 \\
+1 > \frac{1}{\alpha } e^{-\frac{C}{\alpha }+1} > 0 \\
+\end{gather}
+$$
+
+this contition is true, for 
+
+
+solving equation (3) for i
+\begin{equation*}
+i=\ \frac{1}{R_{0}} ln( s) \ -\frac{1}{R_{0}} ln( s_{0}) -s\ +1
+\end{equation*}
+\begin{equation*}
+\ s-\frac{1}{R_{0}} ln( s) \ =1-i-\frac{1}{R_{0}} ln( s_{0}) \ 
+\end{equation*}
+
+
+							$\displaystyle \alpha =\frac{1}{R_{0}}$
+
+							$\displaystyle C=1-i-\frac{1}{R_{0}} ln( s_{0})$
+\begin{equation}
+s\ =-\frac{1}{R_{0}} \ W_{o}\left( -s_{0} \ R_{0} \ e^{-R_{0}( 1-i)}\right)
+\end{equation}
+
+
+Solving equation
+\begin{align*}
+ & ax\ =\ 1-e^{-bx} &  & a,b >0\\
+ &  &  & 0\leqslant x\leqslant 1
+\end{align*}
+trivial solution x=0 when $\displaystyle C=1$
+\begin{equation*}
+ax-1\ =-e^{-bx}
+\end{equation*}
+\begin{equation*}
+t\ =-e^{-b( t+1) /a} =-e^{-b/a} e^{-b\ t\ /a}
+\end{equation*}
+\begin{gather*}
+e^{bt/a} t\ =-e^{-b\ /a}\\
+\ \frac{b}{a} t\ e^{bt/a} \ =-\frac{b}{a} e^{-b\ /a}
+\end{gather*}
+\begin{equation*}
+\ W\left(\frac{b}{a} t\ e^{bt/a}\right) =\frac{b}{a} t=W\left( -\frac{b}{a} e^{-b\ /a}\right)
+\end{equation*}
+\begin{equation*}
+\frac{b}{a}( ax-1) =bx-b/a=W\left( -\frac{b}{a} e^{-b\ /a}\right)
+\end{equation*}
+\begin{equation}
+x\ =\frac{1}{a} +\frac{1}{b} \ W_{n}\left( -\frac{b}{a} \ e^{-\frac{b}{\alpha }}\right)
+\end{equation}
+		condition $\displaystyle W( x)$ defined for $\displaystyle x >-1/e$ 
+
+				$\displaystyle \frac{b}{a} \ e^{-\frac{b}{\alpha }} < 1/e$
+
+
+
+				$\displaystyle \frac{b}{a} \ e< e^{b/a}$ 
+
+
+
+				$\displaystyle \frac{b}{a}$ < 1 or \ $\displaystyle b< a$
+
+
+
+
+
+
+
+
+
+Derivation
+\begin{equation*}
+y\ e^{y} =x
+\end{equation*}
+\begin{equation*}
+y'e^{y} \ +\ y\ e^{y} \ y'=1
+\end{equation*}
+\begin{equation*}
+y'e^{y} \ +\ x\ y'=1
+\end{equation*}
+\begin{equation*}
+y'\ =\frac{1}{x\ +\ e^{y}} =\frac{y}{x\ ( 1+y)}
+\end{equation*}
+\begin{equation}
+W( x) '=\frac{W( x)}{x\ ( 1+W( x))}
+\end{equation}
+
+
+
+
+
+\begin{equation}
+t=\frac{1}{\gamma }\int ^{s( 0)}_{s( t)}\frac{ds}{s\ ln( s/s_{0}) \ +R_{0} \ s\ ( 1-s)}
+\end{equation}
+
+\begin{equation*}
+s\ =-\frac{1}{R_{0}} \ W_{o}\left( -s_{0} \ R_{0} \ e^{-R_{0}( 1-i)}\right)
+\end{equation*}
+\begin{equation*}
+ds\ =-s_{0} \ R_{0} \ e^{-R_{0}( 1-i)} \ \frac{W\left( -s_{0} \ R_{0} \ e^{-R_{0}( 1-i)}\right)}{i\ \left( 1+W\left( -s_{0} \ R_{0} \ e^{-R_{0}( 1-i)}\right)\right)} di
+\end{equation*}
+
+\begin{equation*}
+\end{equation*}
+\begin{gather*}
+exp( ln( -W( x)) \ + W( x)) =-W( x) \ e^{W( x)} =-x\\
+\ ln( -W( x)) \ +W( x) =ln( -x)
+\end{gather*}
+
+\begin{gather*}
+ln( s) \ -R_{0} s\ +R_{0} -ln( s_{0}) =ln( -W_{o}( x)) \ +W_{o}( x) -ln( R_{0}) +R_{0} -ln( s_{0})\\
+\\
+=\frac{1}{R_{0}} \ W_{o}\left( -s_{0} \ R_{0} \ e^{-R_{0}( 1-i)}\right) -ln( s_{o} R_{0}) +R_{0}\\
+\end{gather*}
+\begin{equation}
+t=\frac{1}{\gamma }\int ^{i( 0)}_{i( t)}\frac{s_{0} \ R_{0} \ e^{-R_{0}( 1-i)} \ \frac{W\left( -s_{0} \ R_{0} \ e^{-R_{0}( 1-i)}\right)}{i\ \left( 1+W\left( -s_{0} \ R_{0} \ e^{-R_{0}( 1-i)}\right)\right)} di}{\frac{1}{R_{0}} \ W_{o}\left( -s_{0} \ R_{0} \ e^{-R_{0}( 1-i)}\right)\left(\frac{1}{R_{0}} \ W_{o}\left( -s_{0} \ R_{0} \ e^{-R_{0}( 1-i)}\right) -ln( s_{o} R_{0}) +R_{0}\right)}
+\end{equation}
+
+\begin{equation}
+t=\frac{1}{\gamma }\int ^{i( 0)}_{i( t)}\frac{s_{0} \ R^{2}_{0} \ e^{-R_{0}( 1-i)} \ di}{i\left( 1+W\left( -s_{0} \ R_{0} \ e^{-R_{0}( 1-i)}\right)\right)\left(\frac{1}{R_{0}} \ W_{o}\left( -s_{0} \ R_{0} \ e^{-R_{0}( 1-i)}\right) -ln( s_{o} R_{0}) +R_{0}\right)}
+\end{equation}
+
+
+https://cran.r-project.org/web/packages/deSolve/vignettes/deSolve.pdf

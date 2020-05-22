@@ -1,0 +1,108 @@
+---
+title: "Lambert Function"
+output: html_notebook
+---
+
+
+```{r}
+library(tidyverse)
+library(lamW)
+```
+
+
+
+```{r,warning=FALSE}
+ggplot() +
+    stat_function(aes(color = "fun.1"), fun = function(x) x^2 + x, show.legend =T, xlim = c(-3,3)) +
+    stat_function(aes(color = "fun.2"), fun = function(x) x^2 - x, show.legend =T, xlim = c(-2,4)) +
+    scale_x_continuous(limits = c(-5,5)) +
+    scale_color_manual(name = "Function", values = c("blue","green"))
+```
+
+```{r,warning=FALSE}
+ggplot() +
+    stat_function(aes(color = "LambertW0"), fun = lambertW0, show.legend =T, xlim = c(-exp(-1), 2)) +
+    stat_function(aes(color = "LambertW-1"), fun = lambertWm1, show.legend =T, xlim = c(-exp(-1), -0.0001)) +
+    scale_x_continuous(limits = c(-1,2)) +  scale_y_continuous(limits = c(-5,1),breaks=-5:1) +
+    scale_color_manual(name = "Function", values = c("blue","green"))
+```
+
+SIR models
+
+(S,I) phase plane
+
+```{r,warning=FALSE}
+ggplot() +
+    stat_function(aes(color = "R0=1.5"), fun = function(x) 1-x+log(x)/1.5, show.legend =T, xlim = c(0, 1)) +
+    stat_function(aes(color = "R0=2"), fun = function(x) 1-x+log(x)/2, show.legend =T, xlim = c(0, 1)) +
+    stat_function(aes(color = "R0=3"), fun = function(x) 1-x+log(x)/3, show.legend =T, xlim = c(0, 1)) +
+    stat_function(aes(color = "R0=4"), fun = function(x) 1-x+log(x)/4, show.legend =T, xlim = c(0, 1)) +
+    stat_function(aes(color = "R0=5"), fun = function(x) 1-x+log(x)/5, show.legend =T, xlim = c(0, 1)) +
+    scale_x_continuous(name="s",limits = c(0,1)) +
+    scale_y_continuous(name="i",limits = c(0,0.5)) +
+    scale_color_manual(name = "Function", values = c("blue","green","yellow","orange","red"))
+```
+
+
+
+```{r,warning=FALSE}
+ggplot() +
+    stat_function(aes(color = "I_peak"), fun = function(x) 1-(1+log(x))/x, show.legend =T, xlim = c(1, 5)) +
+    scale_x_continuous(name="R0",limits = c(1,NA)) +
+    scale_y_continuous(name="i_peak",limits = c(0,NA)) +
+    scale_color_manual(name = "Function", values = c("blue"))
+```
+
+
+```{r,warning=FALSE}
+SInf <- function(x) -1/x*lambertW0(-x*exp(-x))
+RInf <- function(x) 1 - SInf(x)
+
+ggplot() +
+    stat_function(aes(color = "S_Inf"), fun = SInf, show.legend =T, xlim = c(1.0001, 5)) +
+    stat_function(aes(color = "R_Inf"), fun = RInf, show.legend =T, xlim = c(1.0001, 5)) +
+    scale_x_continuous(name="R0",limits = c(1,NA)) +
+    scale_y_continuous(name="S_inf", limits = c(0,NA)) +
+    scale_color_manual(name = "Function", values = c("blue","green"))
+```
+
+S in function of t
+
+```{r,warning=FALSE}
+func <- function(s, R0=1.5, s0=1.0) 1/(s*log(s/s0)+R0*s*(1.0-s))
+tfs  <- function(s, R0=1.5, s0=1.0) sapply(s, function(s) integrate(func,lower=s, upper=s0, R0=R0, s0=s0)[['value']]) 
+i0 <- 10^-5
+
+ggplot() +
+    stat_function(aes(color="R0=1.5"), fun = tfs, args=list(R0=1.5, s0=1-i0), xlim = c(SInf(1.5)+i0, 1-i0), show.legend =T) +
+    stat_function(aes(color="R0=2"), fun = tfs, args=list(R0=2, s0=1-i0), xlim = c(SInf(2)+i0, 1-i0), show.legend =T) +
+    stat_function(aes(color="R0=3"), fun = tfs, args=list(R0=3, s0=1-i0), xlim = c(SInf(3)+i0, 1-i0), show.legend =T) +
+    stat_function(aes(color="R0=4"), fun = tfs, args=list(R0=4, s0=1-i0), xlim = c(SInf(4)+i0, 1-i0), show.legend =T) +
+    stat_function(aes(color="R0=5"), fun = tfs, args=list(R0=5, s0=1-i0), xlim = c(SInf(5)+i0, 1-i0), show.legend =T) +
+    scale_x_continuous(name="S",limits = c(0,1)) +
+    scale_y_continuous(name="gamma T", limits = c(0,NA)) +
+    scale_color_manual(name = "Function", values = c("blue","green","yellow","orange","red")) +
+    coord_flip()
+```
+
+
+Time of Peak and End of SIR epidemic from outbreak
+
+```{r,warning=FALSE}
+i0<- 10^-5
+func <- function(s, R0=1.5, s0=1.0) 1/(s*log(s/s0)+R0*s*(1.0-s))
+tend <- function(R0, s0=1.0) sapply(R0, function(R0) integrate(func, lower=SInf(R0)+1-s0, upper=s0, R0=R0, s0=s0)[['value']]) 
+tpeak <- function(R0, s0=1.0) sapply(R0, function(R0) integrate(func, lower=1/R0, upper=s0, R0=R0, s0=s0)[['value']]) 
+
+
+ggplot() +
+    stat_function(aes(color="T_peak"), fun = tpeak, args=list(s0=1-i0), xlim = c(1,5), show.legend =T) +
+    stat_function(aes(color="T_end"),  fun = tend, args=list(s0=1-i0), xlim = c(1,5), show.legend =T) +
+    scale_x_continuous(name="R0",limits = c(1,5)) +
+    scale_y_continuous(name="gamma T", limits = c(0,100)) +
+    scale_color_manual(name = "Function", values = c("blue","green"))
+```
+
+
+SIS model
+

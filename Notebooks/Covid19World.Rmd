@@ -1,0 +1,535 @@
+---
+title: "Covid-19 Glabal Timelines"
+output: html_notebook
+---
+
+
+```{r}
+##################################
+# packages and working directory
+##################################
+
+library(tidyverse)
+library(lubridate)
+library(scales)
+library(httr)
+library(RCurl)
+library(kableExtra)
+library(ggrepel)
+library(gridExtra)
+require(viridis)
+
+setwd(tempdir())
+
+ks <- function (x, acc=1) number_format(accuracy = acc, scale = 1/1000, suffix = "k", big.mark = ",")(x)
+```
+
+
+```{r}
+####################################################################
+# DATA LOADING from JHS on github: Global time series data
+####################################################################
+datapath <- "CSSEGISandData/COVID-19"
+
+# get a file list
+req <- GET(paste0("https://api.github.com/repos/", datapath,"/git/trees/master?recursive=1"))
+stop_for_status(req)
+
+content(req)$tree %>%
+  lapply("[", "path") %>%
+	unlist(use.names = F) %>%
+  grep("csse_covid_19_data/csse_covid_19_time_series/", ., value = TRUE, fixed = TRUE) %>%
+  grep(".csv", ., value = TRUE, fixed = TRUE) %>%
+  grep("global", ., value = TRUE, fixed = TRUE) %>%
+  #read the csv files
+	lapply(function(x) { 
+		read_csv(file.path("https://raw.githubusercontent.com", datapath, 'master', x)) %>%
+		mutate(Metric=str_to_title(str_sub(x,66,-12))) %>%
+		gather(-`Metric`, -`Province/State`, -`Country/Region`, -`Lat`, -`Long`, key='Date', value='n')
+	})	%>%
+	do.call(bind_rows, .) %>%
+	pivot_wider(names_from='Metric', values_from='n', values_fill=list(n = 0)) %>%
+	mutate(Active = Confirmed - Deaths - Recovered) %>%
+	pivot_longer(cols=c("Confirmed","Deaths","Recovered","Active"), names_to='Metric', values_to='n') %>%
+	mutate_each(funs(mdy), Date) %>% 
+	mutate_each(funs(as.factor), Metric, `Province/State`, `Country/Region`) -> df
+```
+
+
+```{r}
+##################################
+# Population data from United Nations
+##################################
+
+population_path <- file.path("~","DataScience","Covid19","data","population.csv")
+if (!file.exists(population_path)) {
+	wpp <- "https://population.un.org/wpp/Download/Files/1_Indicators%20(Standard)/CSV_FILES/WPP2019_TotalPopulationBySex.csv"
+  read_csv(wpp) %>% 
+	filter(Time==2020, Variant=='Medium', LocID < 900)%>% 
+	select(-VarID,-Variant,-MidPeriod,-Time) %>% 
+	mutate_at(c("PopMale","PopFemale","PopTotal","PopDensity"), function(x) as.integer(x*1000)) %>%
+	write_csv(population_path)
+} 
+read_csv(population_path) -> population
+```
+
+
+
+
+```{r}
+####################################################################
+# Aggregate per Country
+####################################################################
+
+df %>% 
+	group_by(Date,`Country/Region`, Metric) %>% 
+	summarise(n=sum(n)) %>% 
+	ungroup -> df1
+
+####################################################################
+# Merge JHS Covid19 data and United Nations population data
+####################################################################
+library(reclin)
+
+#1) create a linktable of JHS countries to United Nations LocID
+
+group_by(df1, `Country/Region`) %>% summarise() %>% transmute(Location=as.character(`Country/Region`)) %>% arrange(Location) %>% mutate(JHUID=row_number()) -> AllJHUCountries 
+select(population, LocID, Location) %>% mutate(Location = if_else(Location == 'Republic of Korea',"Korea, South", Location)) -> AllUNCountries 
+
+pair_blocking(AllJHUCountries, AllUNCountries, large = FALSE) %>%
+  compare_pairs(by = "Location", default_comparator = jaro_winkler(0.9), overwrite = TRUE) %>%
+	score_problink(., model = problink_em(.), var = "weight") %>%
+  select_n_to_m("weight", var = "ntom", threshold = 0) %>% 
+  link() %>%
+	filter(!is.na(Location.x)) ->  LinkTable 
+
+#2) add UN information to JHU covid data 
+left_join(df1, select(LinkTable, Location.x, JHUID, LocID), by=c("Country/Region"="Location.x")) %>%
+	left_join(population, by="LocID") %>%
+	mutate(Cap = 100000 * n /PopTotal) -> df2
+
+```
+
+```{r}
+####################################################################
+# Countries of interest: top 25 and 50 countries of confirmed Covid19 cases
+####################################################################
+
+df2 %>% filter(Metric == 'Confirmed') %>% group_by(`Country/Region`) %>% summarise(n=max(n)) -> Countries 
+Countries %>%	top_n(25, wt=n) %>% pull(`Country/Region`) -> top25
+Countries %>%	top_n(50, wt=n) %>% pull(`Country/Region`) -> top50
+df2 %>% filter(`Country/Region` %in% top25) -> df25
+df2 %>% filter(`Country/Region` %in% top50) -> df50
+```
+
+
+```{r}
+##############################################
+# Normalization to day of outbreak
+##############################################
+dealwithChina <- function(Date, Country) if_else(Country=='China', Date-7, Date)
+
+# day of outbreak
+df2 %>% filter(Metric== 'Confirmed') %>% 
+	group_by(`Country/Region`) %>% 
+	mutate(d=abs(n-100)) %>% 
+	arrange(d) %>% 
+	summarise_all(first) %>% 
+	select(`Country/Region`, StartDate=Date) %>% 
+	mutate(StartDate= dealwithChina(StartDate,`Country/Region`) ) -> start
+
+
+# this is quite course, especially China, smoothe, extrapolate and find date closest to 100
+library(rootSolve)
+find_outbreak <- function(Date,n, tresh=100) {
+	data.frame(Date=Date, n=n) %>%
+	mutate(Day = as.numeric(Date - min(Date))) %>% 
+	loess(n ~ Day, data=., span=0.4, control = loess.control(surface = "direct")) %>%
+	predict(newdata=data.frame(Day=-0:100)) %>% 
+	data.frame(x=as.numeric(names(.)), y= . - tresh) %>% 
+  {uniroot.all(f=approxfun(.$x, .$y), interval=range(.$x))} %>%
+	{min(Date) + last(.)} 
+}
+
+#test: does not work well
+#df2 %>% filter(Metric== 'Confirmed', n > 50, `Country/Region` =="China") %>% {find_outbreak(.$Date,.$n)}
+
+df50 %>% filter(Metric== 'Confirmed', n > 50) %>% 
+	group_by(`Country/Region`) %>% 
+	summarise(StartDate = find_outbreak(Date,n)) -> start2
+```
+
+```{r,fig.width=13}
+####################################################################
+# Graphical Exploration Confirmed Cases
+####################################################################
+df25 %>% filter(Metric== 'Confirmed', n > 50) %>% 
+	{
+	ggplot(.,aes(x=Date, y=n, colour=`Country/Region`)) +
+  geom_point(shape=1, size=3) + 
+	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
+	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(`Country/Region`,ks(n),sep=',')), nudge_x=0.7) +
+	scale_x_date() +
+	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                labels = trans_format("log10", math_format(10^.x))) +
+	labs(title="Confirmed Cases", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
+	theme_bw()
+	}		
+```
+
+```{r,fig.width=13}
+####################################################################
+# Graphical Exploration Active Cases
+####################################################################
+df25 %>% filter(Metric== 'Active', n > 50) %>%
+	{
+	ggplot(.,aes(x=Date, y=n, colour=`Country/Region`)) +
+  geom_point(shape=1, size=3) + 
+	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
+	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(`Country/Region`,ks(n),sep=',')), nudge_x=2) +
+	scale_x_date() +
+	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                labels = trans_format("log10", math_format(10^.x))) +
+	labs(title="Active Cases", subtitle = paste(paste("Covid19 pandemic","-",date()),"-",date()), x="Time(2020)", y="Cases") +
+	theme_bw()	
+	}	
+```
+
+```{r,fig.width=13}
+####################################################################
+# Graphical Exploration Daily Growth of Confirmed Cases
+####################################################################
+
+df25 %>% filter(Metric == 'Confirmed') %>% 
+	group_by(`Country/Region`) %>%
+	arrange(n) %>%
+	mutate(NewCases = n-lag(n, default=0)) %>%
+	filter(NewCases > 50) %>%
+	{
+	ggplot(., aes(x=Date, y=NewCases, colour=`Country/Region`)) +
+  geom_point(shape=1, size=3) + 
+	geom_smooth(formula ='y ~ x',method = 'loess', span=0.70, se=FALSE) +
+	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(`Country/Region`,ks(NewCases,0.1), sep=',')), nudge_x=2) +
+	scale_x_date() +
+	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                labels = trans_format("log10", math_format(10^.x))) +
+	labs(title="New Confirmed New Cases per Day", subtitle = paste(paste("Covid19 pandemic","-",date()),"-",date()), x="Time(2020)", y="New Cases/day") +
+	theme_bw()
+	}
+```
+
+```{r,fig.width=13}
+####################################################################
+# Graphical Exploration Daily Growth of Confirmed Cases
+####################################################################
+
+df25 %>% filter(Metric == 'Confirmed') %>% 
+	group_by(`Country/Region`) %>%
+	arrange(n) %>%
+	mutate(NewCases = n-lag(n, default=0)) %>%
+	filter(NewCases > 50) %>%
+	{
+	ggplot(., aes(x=Date, y=NewCases, colour=`Country/Region`)) +
+  geom_point(shape=1, size=3) + 
+	geom_smooth(formula ='y ~ x',method = 'loess', span=0.70, se=FALSE) +
+	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(`Country/Region`,ks(NewCases,0.1), sep=',')), nudge_x=2) +
+	scale_x_date() +
+	labs(title="New Confirmed New Cases per Day", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="New Cases/day") +
+	theme_bw()
+	}
+```
+
+```{r,fig.width=13}
+####################################################################
+# Graphical Exploration Daily Growth of Confirmed Cases
+####################################################################
+
+
+df50 %>% 
+	filter(Metric == 'Confirmed') %>% 
+	group_by(`Country/Region`) %>%
+	arrange(n) %>%
+	mutate(NewCases = n-lag(n, default=0)) %>%
+	left_join(start, by="Country/Region") %>%
+	{
+	ggplot(., aes(x=Date, y=reorder(`Country/Region`, as.integer(StartDate)))) +
+  geom_tile(aes(fill=NewCases)) + 
+	scale_x_date() +
+	scale_y_discrete(position = "right")	+	
+	labs(title="New Confirmed Cases per Day", subtitle = "Covid19 pandemic-Top 50 Countries", x="Time(2020)", y="") +
+	theme_bw() +
+	theme(legend.position = "bottom") +		
+	scale_fill_viridis( option = "inferno", direction = +1, name = "New Cases/day", limits= c(0,NA), 
+											trans= "log1p", breaks=10^seq(0,5), labels = label_number(accuracy = 1, big.mark = ','),
+                      guide = guide_colorbar(direction = "horizontal", barheight = unit(2, units = "mm"), barwidth = unit(50, units = "mm"),
+                                             draw.ulim = F, title.position = 'top', title.hjust = 0.5, label.hjust = 0.5))
+	}
+```
+
+
+
+```{r,fig.width=13}
+####################################################################
+# Graphical Exploration Relative Daily Growth of Confirmed Cases
+####################################################################
+
+df25 %>% filter(Metric == 'Confirmed') %>% 
+	group_by(`Country/Region`) %>%
+	arrange(n) %>%
+	mutate(NewCases = n/lag(n)-1 ) %>%
+	filter(Date > max(Date) - 14) %>%
+{
+	ggplot(., aes(x=Date, y=NewCases, colour=`Country/Region`)) +
+  geom_point(shape=1, size=3) + 
+	geom_smooth(formula ='y ~ x',method = 'lm', se=FALSE) +
+	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(`Country/Region`,percent(NewCases, accuracy=0.1),sep=',')), nudge_x=0.7) +
+	scale_x_date() +
+	#ylim(0,1) +
+	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                labels = trans_format("log10", math_format(10^.x))) +
+	labs(title="Relative Increase of New Confirmed Cases per Day", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Relative New Cases/day") +
+	theme_bw()
+}
+```
+
+```{r,fig.width=13}
+####################################################################
+# Graphical Exploration Deaths
+####################################################################
+df25 %>% filter(Metric== 'Deaths', n > 1) %>%
+	{
+	ggplot(., aes(x=Date, y=n, colour=`Country/Region`)) +
+  geom_point(shape=1, size=3) + 
+	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
+	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(`Country/Region`,ks(n,0.1),sep=',')), nudge_x=2) +
+	scale_x_date() +
+	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                labels = trans_format("log10", math_format(10^.x))) +
+	labs(title="Deaths", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Deaths count") +
+	theme_bw()
+}
+```
+
+```{r,fig.width=13}
+####################################################################
+# Graphical Exploration Daily Increase of Deaths
+####################################################################
+
+df25 %>% filter(Metric == 'Deaths') %>% 
+	group_by(`Country/Region`) %>%
+	arrange(n) %>%
+	mutate(New = n-lag(n, default=0)) %>%	
+	filter(New > 10) %>%
+	{
+	ggplot(., aes(x=Date, y=New, colour=`Country/Region`)) +
+  geom_point(shape=1, size=3) + 
+	geom_smooth(formula ='y ~ x',method = 'loess', span=0.50, se=FALSE) +
+	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(`Country/Region`, round(New), sep=',')), nudge_x=2) +
+	scale_x_date() +
+	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                labels = trans_format("log10", math_format(10^.x))) +
+	labs(title="New Deaths per Day", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Deaths/day") +
+	theme_bw()
+	}	
+```
+
+```{r,fig.width=13}
+####################################################################
+# Graphical Exploration Daily Growth of Deaths
+####################################################################
+
+df50 %>% 
+	filter(Metric == 'Deaths') %>% 
+	group_by(`Country/Region`) %>%
+	arrange(n) %>%
+	mutate(NewDeaths = n-lag(n, default=0)) %>%
+	left_join(start, by="Country/Region") %>%
+	{
+	ggplot(., aes(x=Date, y=reorder(`Country/Region`, as.integer(StartDate)))) +
+  geom_tile(aes(fill=NewDeaths)) + 
+	scale_x_date() +
+	scale_y_discrete(position = "right")	+	
+	labs(title="New Deaths per Day", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="") +
+	theme_bw() +
+	theme(legend.position = "bottom") +		
+	scale_fill_viridis( option = "inferno", direction = +1, name = "Deaths", limits= c(0,NA), 
+											trans= "log1p", breaks=10^seq(0,5), labels = label_number(accuracy = 1, big.mark = ','),
+                      guide = guide_colorbar(direction = "horizontal", barheight = unit(2, units = "mm"), barwidth = unit(50, units = "mm"),
+                                             draw.ulim = F, title.position = 'top', title.hjust = 0.5, label.hjust = 0.5))
+	}
+```
+
+```{r,fig.width=13}
+####################################################################
+# Graphical Exploration Relative Daily Growth of Deaths
+####################################################################
+
+df25 %>% filter(Metric == 'Deaths') %>% 
+	group_by(`Country/Region`) %>%
+	arrange(n) %>%
+	mutate(New = n/lag(n)-1 ) %>%	
+	filter(Date > max(Date) - 14) %>%
+	{
+	ggplot(., aes(x=Date, y=New, colour=`Country/Region`)) +
+  geom_point(shape=1, size=3) + 
+	geom_smooth(formula ='y ~ x',method = 'lm', se=FALSE) +
+	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(`Country/Region`, percent(New,accuracy=0.1), sep=',')), nudge_x=0.7) +
+	scale_x_date() +
+	#ylim(0,1) +
+	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                labels = trans_format("log10", math_format(10^.x))) +
+	labs(title="Relative Increase of Deaths per Day", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Relative Increase Deaths/day") +
+	theme_bw()
+	}
+```
+
+
+- The generation time is the time lag between infection in a primary case and a secondary case. 
+
+- Basic Reproduction number (R0)
+
+- Time dependent Reproduction numbers at time t
+
+- Attack rate (AR)
+
+- Exponential growth (EG)
+
+- exponential growth rate (r), is the per capita change in number of new cases per unit of time. 
+
+- Maximum likelihood estimation (ML) of R0
+
+
+TODO
+
+- CFR plot
+- countries with increase-decrease during last two weeks
+- testing
+
+
+
+```{r, fig.width=13}
+##################################
+# DATA INSPECTION - normalized from outbreak
+##################################
+
+start %>% filter(StartDate != min(StartDate)) %>% pull(StartDate) %>% min -> earlyDate
+ceiling(as.numeric(today() - earlyDate)/5)*5 -> horizon  
+
+df25 %>% left_join(start, by="Country/Region") %>% 
+	mutate(Day= Date - StartDate) %>%
+	filter(Metric== 'Confirmed', n > 50) %>%
+  { ggplot(., aes(x=Day, y=n, colour=`Country/Region`)) +
+  geom_point(shape=1, size=3) + 
+	xlim(-5,horizon) +
+	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                labels = trans_format("log10", math_format(10^.x))) +
+	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
+	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(`Country/Region`, ks(n), sep=',')), nudge_x=.3) +
+	labs(title="Confirmed Cases relative to local outbreak", subtitle = paste("Covid19 pandemic","-",date()), x="Day after outbreak", y="Cases") +
+	theme_bw()
+  }	
+```
+
+
+```{r, fig.width=13}
+##################################
+# DATA INSPECTION - normalized from outbreak
+##################################
+df25 %>% left_join(start, by="Country/Region") %>% 
+	mutate(Day= Date - StartDate) %>%
+	filter(Metric== 'Active', n > 50) %>% 
+	{ ggplot(data=., aes(x=Day, y=n, colour=`Country/Region`)) +
+  geom_point(shape=1, size=3) + 
+	xlim(-5,horizon) +
+	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                labels = trans_format("log10", math_format(10^.x))) +
+	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
+	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(`Country/Region`, ks(n), sep=',')), nudge_x=.3) +
+	labs(title="Active Cases relative to local outbreak", subtitle = paste("Covid19 pandemic","-",date()), x="Day after outbreak", y="Cases") +
+	theme_bw()
+}
+```
+
+
+
+```{r, fig.width=13}
+##################################
+# DATA VISUALIZATION Normalized per Capita
+##################################
+df25 %>% 
+	left_join(start, by="Country/Region") %>% 
+	mutate(Day= Date - StartDate) %>%
+	filter(Metric== 'Confirmed', n > 50) %>%
+	{
+	ggplot(., aes(x=Day, y=Cap, colour=`Country/Region`)) +
+  geom_point(shape=1, size=3) + 
+	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
+	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(`Country/Region`, round(Cap,1), sep=',')), nudge_x=2) +
+	xlim(-5,horizon) +
+	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                labels = trans_format("log10", math_format(10^.x))) +
+	labs(title="Confirmed Cases per Capita (per 100k)", subtitle = paste("Covid19 pandemic","-",date()), x="Day after outbreak", y="Cases/Capita(100k)") +
+	theme_bw()
+	}
+```
+```{r, fig.width=13}
+##################################
+# DATA VISUALIZATION Normalized per Capita
+##################################
+df25 %>% 
+	left_join(start, by="Country/Region") %>% 
+	mutate(Day= Date - StartDate) %>%
+	filter(Metric== 'Deaths', n > 1, Day <= horizon) %>% 
+	{
+	ggplot(., aes(x=Day, y=Cap, colour=`Country/Region`)) +
+  geom_point(shape=1, size=3) + 
+	geom_smooth(formula ='y ~ x',method = 'loess', se=FALSE) +
+	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(`Country/Region`, round(Cap,1), sep=',')), nudge_x=2) +
+	xlim(-5,horizon) +
+	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                labels = trans_format("log10", math_format(10^.x))) +
+	labs(title="Deaths per Capita (per 100k)", subtitle = paste("Covid19 pandemic","-",date()), x="Day after outbreak", y="Deaths/Capita(100k)") +
+	theme_bw()
+	}		
+```
+
+
+```{r}
+df25 %>% 
+	filter(Metric %in% c('Confirmed','Deaths')) %>% 
+	select(Date, Metric, `Country/Region`,  n, PopTotal) %>% 
+	spread(Metric,n) %>% 
+	group_by(`Country/Region`) %>%
+	summarise(DConfirmed = last(Confirmed)-nth(Confirmed,-2), DDeaths = last(Deaths)-nth(Deaths,-2), g=last(Deaths)/nth(Deaths,-14), Confirmed=last(Confirmed), Deaths = last(Deaths)) %>% 
+	mutate(CFR = 100 * Deaths / Confirmed, DGrowth = DDeaths/Deaths, EstInfect = round(g*Deaths / 0.015), IFR = 100 * Deaths/EstInfect, UnderEst=round(EstInfect/Confirmed,1) ) %>%
+	arrange(desc(DDeaths)) %>%
+	select(-g) %>%
+	kable()
+```
+
+```{r}
+
+df25 %>% 
+	filter(Metric %in% c('Confirmed','Deaths')) %>% 
+	select(`Country/Region`, Metric, n, Date) %>%
+	spread(Metric,n) %>%
+	group_by(`Country/Region`) %>%
+	mutate(NewCases = Confirmed-lag(Confirmed), relNewCases = Confirmed/lag(Confirmed)-1, NewDeaths = Deaths-lag(Deaths), relNewDeaths = Deaths/lag(Deaths)-1) %>%
+	filter(Date == max(Date))  %>%
+	select(-Date) %>%
+	arrange(desc(NewDeaths)) %>% 
+	kable()
+```
+
+
+References
+
+* Johns Hopkins Covid-19 data https://github.com/CSSEGISandData/COVID-19
+
+* United Nation World Population Prospects 2019 https://population.un.org/wpp/Download/Standard/CSV/
+
+* R0 estimation https://bmcmedinformdecismak.biomedcentral.com/articles/10.1186/1472-6947-12-147
+
+* https://www.worldometers.info/coronavirus/coronavirus-incubation-period/
+
+* https://www.worldometers.info/coronavirus/coronavirus-death-rate/

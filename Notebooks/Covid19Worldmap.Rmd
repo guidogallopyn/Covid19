@@ -1,0 +1,178 @@
+---
+title: "Covid-19 Glabal Maps"
+output: html_notebook
+---
+
+
+```{r}
+##################################
+# packages and working directory
+##################################
+
+library(tidyverse)
+library(lubridate)
+library(scales)
+library(httr)
+library(RCurl)
+library(kableExtra)
+library(ggrepel)
+library(gridExtra)
+
+ks <- function (x, acc=1) number_format(accuracy = acc, scale = 1/1000, suffix = "k", big.mark = ",")(x)
+
+theme_map <- function(...) {
+	theme_minimal() +
+  theme(
+    text = element_text(color = "#22211d"),
+    axis.line = element_blank(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    # panel.grid.minor = element_line(color = "#ebebe5", size = 0.2),
+    panel.grid.major = element_line(color = "#ebebe5", size = 0.2),
+    panel.grid.minor = element_blank(),
+    plot.background = element_rect(fill = "#f5f5f2", color = NA), 
+    panel.background = element_rect(fill = "#f5f5f2", color = NA), 
+    legend.background = element_rect(fill = "#f5f5f2", color = NA),
+    panel.border = element_blank(),
+    ...
+  )
+}
+
+toRadians <- function(x) pi*x/180
+
+# distance in meter on the earth between 2 locations with coordinates  (lat1,lon1) and (lat2,lon2)
+Distance <- function(lat1,lon1,lat2,lon2){
+  phi1 = toRadians(lat1) 
+  phi2 = toRadians(lat2)
+  dlambda = toRadians(lon2-lon1) 
+  R = 6371e3; #gives d in metres
+  acos( sin(phi1)* sin(phi2) + cos(phi1)*cos(phi2) * cos(dlambda) ) * R;
+}
+```
+
+
+```{r}
+####################################################################
+# DATA LOADING from JHS on github: Global time series data
+####################################################################
+datapath <- "CSSEGISandData/COVID-19"
+
+# get a file list
+req <- GET(paste0("https://api.github.com/repos/", datapath,"/git/trees/master?recursive=1"))
+stop_for_status(req)
+
+content(req)$tree %>%
+  lapply("[", "path") %>%
+	unlist(use.names = F) %>%
+  grep("csse_covid_19_data/csse_covid_19_time_series/", ., value = TRUE, fixed = TRUE) %>%
+  grep(".csv", ., value = TRUE, fixed = TRUE) %>%
+  grep("global", ., value = TRUE, fixed = TRUE) %>%
+  #read the csv files
+	lapply(function(x) { 
+		read_csv(file.path("https://raw.githubusercontent.com", datapath, 'master', x)) %>%
+		mutate(Metric=str_to_title(str_sub(x,66,-12))) %>%
+		gather(-`Metric`, -`Province/State`, -`Country/Region`, -`Lat`, -`Long`, key='Date', value='n')
+	})	%>%
+	do.call(bind_rows, .) %>%
+	pivot_wider(names_from='Metric', values_from='n', values_fill=list(n = 0)) %>%
+	mutate(Active = Confirmed - Deaths - Recovered) %>%
+	pivot_longer(cols=c("Confirmed","Deaths","Recovered","Active"), names_to='Metric', values_to='n') %>%
+	mutate_each(funs(mdy), Date) %>% 
+	mutate_each(funs(as.factor), Metric, `Province/State`, `Country/Region`) -> df
+```
+
+
+```{r}
+##################################
+# Population data from United Nations
+##################################
+
+if (!file.exists(file.path("~","DataAnalysis","Covid19","data","population.csv"))) {
+	wpp <- "https://population.un.org/wpp/Download/Files/1_Indicators%20(Standard)/CSV_FILES/WPP2019_TotalPopulationBySex.csv"
+  read_csv(wpp) %>% 
+	filter(Time==2020, Variant=='Medium', LocID < 900)%>% 
+	select(-VarID,-Variant,-MidPeriod,-Time) %>% 
+	mutate_at(c("PopMale","PopFemale","PopTotal","PopDensity"), function(x) as.integer(x*1000)) %>%
+	write_csv(file.path("~","DataAnalysis","Covid19","data","population.csv"))
+} 
+read_csv(file.path("~","DataAnalysis","Covid19","data","population.csv")) -> population
+```
+
+
+
+
+```{r}
+####################################################################
+# 
+####################################################################
+
+df %>% 
+	group_by(Date,`Country/Region`, Metric) %>% 
+	summarise(n=sum(n)) %>% 
+	ungroup -> df1
+
+####################################################################
+# Merge JHS Covid19 data and United Nations population data
+####################################################################
+library(reclin)
+
+#1) create a linktable of JHS countries to United Nations LocID
+
+group_by(df1, `Country/Region`) %>% summarise() %>% transmute(Location=as.character(`Country/Region`)) %>% arrange(Location) %>% mutate(JHUID=row_number()) -> AllJHUCountries 
+select(population, LocID, Location) %>% mutate(Location = if_else(Location == 'Republic of Korea',"Korea, South", Location)) -> AllUNCountries 
+
+pair_blocking(AllJHUCountries, AllUNCountries, large = FALSE) %>%
+  compare_pairs(by = "Location", default_comparator = jaro_winkler(0.9), overwrite = TRUE) %>%
+	score_problink(., model = problink_em(.), var = "weight") %>%
+  select_n_to_m("weight", var = "ntom", threshold = 0) %>% 
+  link() %>%
+	filter(!is.na(Location.x)) ->  LinkTable 
+
+#2) add UN information to JHU covid data 
+left_join(df1, select(LinkTable, Location.x, JHUID, LocID), by=c("Country/Region"="Location.x")) %>%
+	left_join(population, by="LocID") %>%
+	mutate(Cap = 100000 * n /PopTotal) -> df2
+
+```
+
+
+
+```{r}
+####################################################################
+# Countries of interest: top 25 of confirmed Covid19 cases
+####################################################################
+
+df2 %>% filter(Metric == 'Confirmed') %>%
+  group_by(`Country/Region`) %>% 
+	summarise(n=max(n)) %>%
+	top_n(25, wt=n) %>%
+	pull(`Country/Region`) -> Countries 
+
+df2 %>% filter(`Country/Region` %in% Countries) -> df5
+```
+
+
+
+```{r,fig.width=13}
+####################################################################
+# World Map
+####################################################################
+map_data("world") %>% 
+  ggplot(aes(x = long, y = lat)) +
+  geom_polygon(aes(group = group), fill='darkgray', colour = "white") +
+  geom_point(data=data.frame(lat=42.8126, long=-70.8773), size=4, shape=1, color='red') +
+	theme_map() +
+	coord_map() # mercator projection
+#	coord_map("azequalarea", orientation = c(42.8126, -70.8773, 0))
+```
+
+
+References
+
+* Johns Hopkins Covid-19 data https://github.com/CSSEGISandData/COVID-19
+
+* United Nation World Population Prospects 2019 https://population.un.org/wpp/Download/Standard/CSV/
+
