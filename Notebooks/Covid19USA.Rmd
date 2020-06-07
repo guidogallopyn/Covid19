@@ -3,8 +3,14 @@ title: "Covid-19 USA Time series"
 output: html_notebook
 ---
 
+# Introduction
 
-```{r}
+This is an analysis of USA Covid-19 pandemic data as available from Johns Hopkins University in combination with US Census data on population. 
+
+To hide code, toggle the 'Code' button on the top right of this page.
+
+
+```{r, message=FALSE, warning=FALSE}
 ##################################
 # packages and working directory
 ##################################
@@ -25,6 +31,14 @@ if(!require(viridis)) {
 }
 require(mapproj)
 require(gganimate)
+library(gifski)
+library(transformr)
+library(tweenr)
+
+options('gganimate.renderer' = gifski_renderer())
+options(gganimate.dev_args = list(width = 1920, height = 1080))
+print.gif_image <- function(x, ...) knitr::include_graphics(x, ...) # Bug fix in ggannimate
+
 
 setwd(tempdir())
 
@@ -61,21 +75,16 @@ Distance <- function(lat1,lon1,lat2,lon2){
   R = 6371e3; #gives d in metres
   acos( sin(phi1)* sin(phi2) + cos(phi1)*cos(phi2) * cos(dlambda) ) * R;
 }
+
 ```
 
-TODO: 
-- increase-decrease of new cases in two week window
-- CFR evolution 
-- testing data from https://covidtracking.com/data
-- annimation of states. cum confirmed cases vs cumm deaths see https://covid19.who.int/explorer
-- plot highest cases as in https://covid19.who.int/
 
 
 # Data Loading
 
-```{r}
+```{r, message=FALSE}
 ####################################################################
-# DATA LOADING from JHS on github: Global time series data
+# Johns Hopkins University Covid19 data on github: USA time series data
 ####################################################################
 datapath <- "CSSEGISandData/COVID-19"
 
@@ -89,8 +98,7 @@ content(req)$tree %>%
   grep("csse_covid_19_data/csse_covid_19_time_series/", ., value = TRUE, fixed = TRUE) %>%
   grep(".csv", ., value = TRUE, fixed = TRUE) %>%
   grep("US", ., value = TRUE, fixed = TRUE) %>%
-  #read the csv files
-	lapply(function(x) { 
+	lapply(function(x) { #read all the csv files
 		read_csv(file.path("https://raw.githubusercontent.com", datapath, 'master', x)) %>%
 		mutate(Metric=str_to_title(str_sub(x,66,-8))) %>%
 		pivot_longer(cols=matches("[0-9]+/[0-9]+/[0-9]+"), names_to='Date', values_to='n') 
@@ -98,186 +106,227 @@ content(req)$tree %>%
 	do.call(bind_rows, .) %>%
 	mutate_each(funs(mdy), Date) %>% 
 	select(-Combined_Key) %>%
-	mutate(FIPS=str_pad(FIPS,5,side="left",pad="0")) %>%
-	mutate_each(funs(as.factor), Metric,UID,iso2,iso3,code3,FIPS, Admin2, Province_State, Country_Region) -> df
-```
+	mutate(FIPS=str_pad(FIPS,5,side="left",pad="0")) -> df
+	#mutate_each(funs(as.factor), Metric,UID,iso2,iso3,code3,FIPS, Admin2, Province_State, Country_Region) -> df
 
-```{r}
+```
+Note
+- there are no FIPS codes for some census designated places
+ mitigation : provide population hard-coded from wikipedia?
+
+
+```{r, message=FALSE}
 ####################################################################
-# DATA LOADING State USPS abriviations and fips codes
+# USPS State abriviations and fips codes
 ####################################################################
 
 read_csv("https://gist.githubusercontent.com/dantonnoriega/bf1acd2290e15b91e6710b6fd3be0a53/raw/11d15233327c8080c9646c7e1f23052659db251d/us-state-ansi-fips.csv") -> StateAbreviations
 
 ####################################################################
-# DATA LOADING US Census county population data
+# US Census county population data
 ####################################################################
 
-read_csv("https://www2.census.gov/programs-surveys/popest/datasets/2010-2019/counties/totals/co-est2019-alldata.csv") %>%
+read_csv("https://www2.census.gov/programs-surveys/popest/datasets/2010-2019/counties/totals/co-est2019-alldata.csv") %>% 
 	select("SUMLEV","REGION","DIVISION","STATE","COUNTY", "STNAME","CTYNAME", "POPESTIMATE2019") %>%
 	mutate(SUMLEV = fct_recode(as.factor(SUMLEV), State="040", County="050")) %>%
 	mutate(REGION = fct_recode(as.factor(REGION), Northeast="1", Midwest="2", South="3", West="4")) %>% 
-	mutate(DIVISION = fct_recode(as.factor(DIVISION), `New England`="1", `Middle Atlantic`="2", `East North Central`="3", `West North Central`="4",`South Atlantic`="5",
-															 `East South Central`="6", `West South Central`="7", `Mountain`="8", `Pacific`="9")) %>%
+	mutate(DIVISION = fct_recode(as.factor(DIVISION), `New England`="1", `Middle Atlantic`="2", `East North Central`="3", `West North Central`="4",`South Atlantic`="5", `East South Central`="6", `West South Central`="7", `Mountain`="8", `Pacific`="9")) %>%
+	mutate(CTYNAME = if_else(STATE == "35" & COUNTY == "013","Dona Ana County", CTYNAME)) %>% #bug fix with non utf character
 	mutate_at(vars(STATE,COUNTY), as.factor) -> USCensus
 ```
-
-TODO load election data: blue, red states, 2016 presidential elecions, Governors 
-
-TODO load map data
 
 
 # Data wrangeling
 
-```{r}
-####################################################################
-# US State data: msplit US centus data in states and counties, merge states with USPS data
-####################################################################
+merge data from 4 different sources -> FIPS code is key to join
+- JHU covid19 data
+- US census data
+- USPS state abreviation data
+- ggplot US maps geo data
+
+- Thought: This would be better done with a make data pipeline (see drake package)
+how to do this with make? in R: lear drake https://www.rdocumentation.org/packages/drake/versions/7.5.2
+
+
+```{r, warning=FALSE}
+###############################################################################################
+# US Census data: split US census data in states and counties, add USPS abreviations to states
+###############################################################################################
 USCensus %>% 
 	filter(SUMLEV == "State") %>%
 	select(-SUMLEV) %>%
-  left_join(select(StateAbreviations,st,USPS=stusps), by=c("STATE"="st")) -> USStates.Census
+  left_join(select(StateAbreviations,st, USPS=stusps), by=c("STATE"="st")) %>%
+	select(-COUNTY,-CTYNAME) -> USStates.Census
 
 USCensus %>% 
 	filter(SUMLEV == "County") %>%
 	select(-SUMLEV) %>%
 	mutate(FIPS = str_c(as.character(STATE), as.character(COUNTY)) ) %>% # combines state/county FIPS code
+	mutate(CTYNAME=replace(CTYNAME, FIPS == 11001, "Washington")) %>% # COUNTY name for DC is Washington
 	left_join(select(StateAbreviations,st, USPS=stusps), by=c("STATE"="st")) -> USCounties.Census
 ```
 
 
+```{r, message=FALSE}
+###############################################################################################
+# geo map data for USA states and counties
+# fix some names, add STATE and FIPS code
+# Creates:
+# - map.state: geo State maps with STATE code for joining purpose
+# - map.county: geo County maps with FIPS code for joining purpose
+# Note: some census units are not on map
+###############################################################################################
 
-```{r}
+state_path <- file.path("~","DataScience","Covid19","data","MapLinkState.csv")
+if (!file.exists(state_path)) {
+  map_data("state") %>% # note Hawaii and Alaska are not included
+	  group_by(region) %>% 
+	  summarise(Long=mean(long), Lat=mean(lat)) %>%
+    left_join(transmute(USStates.Census, region=tolower(STNAME), STATE),by="region") %>%
+  	write_csv(state_path)
+}
+read_csv(state_path) -> Link.map.state
 
-####################################################################
-# Derive US County data
-####################################################################
+map_data("state") %>% left_join(select(Link.map.state, region, STATE), by="region") -> map.state
 
-df %>%  select(-Metric, -Date, -n, -Country_Region) %>% 
-	filter(Lat != 0) %>%
-	#filter(!is.na(Population)) %>% 
-	distinct(UID, .keep_all = TRUE) %>% 
-	left_join(USCounties.Census, by="FIPS") %>%	glimpse
-	mutate(County = as.factor(if_else(is.na(Admin2), as.character(Province_State), as.character(Admin2)))) %>%
-  select(-Admin2,-Country_Region) ->  USCounties.Covid19
+# create a linktable of geometric map counties with FIPS codes and Census data, persistent storage to avoid repeated calcalation
+county_path <- file.path("~","DataScience","Covid19","data","MapLinkCounty.csv")
 
-USCounties %>% 
-	filter(!is.na(StateCode), Population > 0) %>%
-	group_by(StateCode) %>%
-	summarise(State = first(Province_State), Lat=mean(Lat), Long=mean(Long_), Population=sum(Population)) -> USStates
+map_data("county") %>% # note Hawaii and Alaska counties are not included
+	filter(group != 1621) %>% # yellowstone national is duplicate with park county
+	mutate(subregion=replace(subregion, group == 2386, "ogala lakota")) %>% # shannon county changed name to ogala lakota county 
+	left_join(select(Link.map.state, region, STATE), by="region") -> map.county
 
-
-#1) create a linktable of JHU counties and map-data counties
-county_path <- file.path("~","DataScience","Covid19","data","CountyLinkTable.csv")
 if (!file.exists(county_path)) {
-	require(reclin)
-  map_data("county") %>% group_by(region,subregion) %>% summarise(long=mean(long), lat=mean(lat)) -> map.counties
-	
-  pair_blocking(transmute(USCounties, UID, region=tolower(Province_State), subregion=tolower(County),long=Long_,lat=Lat), map.counties, "region", large = FALSE) %>% 
+  require(reclin)
+
+  pair_blocking(transmute(USCounties.Census, FIPS, STATE, region=tolower(STNAME), subregion=tolower(CTYNAME)), 
+	  						group_by(map.county, STATE, region, subregion) %>% summarise(Long=mean(long), Lat=mean(lat)), 
+		  					blocking_var = "STATE", large = FALSE) %>% 
     compare_pairs(by = "subregion", default_comparator = jaro_winkler(0.8), overwrite = TRUE) %>% 
-	  score_problink(., model = problink_em(.), var = "weight") %>%
+	  score_problink(., model = problink_em(.), var = "weight") %>% 
     select_n_to_m("weight", var = "ntom", threshold = 0) %>% 
     link() %>% 
-	  filter(!is.na(region.y)) %>%
-  	select(region=region.y, subregion=subregion.y, UID) %>%
+	  filter(!is.na(subregion.y)) %>% 
+  	select(FIPS,region=region.y, subregion=subregion.y, Long, Lat) %>%
 	  write_csv(county_path)
-    detach_package(reclin)
 }
-read_csv(county_path) ->  CountyLinkTable
 
-#2) create a link table of JHU states and map-data states
-map_data("state") %>% group_by(region) %>% 
-	summarise() %>%
-  left_join(transmute(USStates, region=tolower(State), StateCode),by="region") ->  StateLinkTable
+read_csv(county_path)  -> Link.map.county
 
-####################################################################
-# Enrich Covid County data 
-####################################################################
-
-df %>% select(UID, Date, Metric, n) %>%
-	filter(!is.na(UID)) %>%
-	left_join(USCounties, by="UID") -> df1
-
-####################################################################
-# Derive Summary Covid County data 
-####################################################################
-df1 %>% 
-  group_by(UID, Metric) %>% 
-	arrange(Date) %>%
-	#summarise(delta = last(n) - nth(n,-2, default=0), n=last(n)) %>% # rel difference of n 2 weeks ago
-	mutate(delta = n - lag(n, 1, default=0)) %>% # rel difference of n 2 weeks ago
-	summarize(rel=last(delta) / max(1,nth(delta,-14, default=1))-1, delta=last(delta), n=last(n)) %>%
-	ungroup %>%
-	pivot_longer(cols=c('n','delta','rel'), names_to='Metric2', values_to='val') %>%
-	pivot_wider(names_from=c("Metric","Metric2"), values_from="val") %>% 
-	mutate(CaseRank = rank(-Confirmed_n, ties.method="min"), DeathsRank = rank(-Deaths_n,ties.method="min")) %>%
-	right_join(USCounties, by="UID") ->  USCountiesCovid19
-
-USCountiesCovid19 %>% 
-	filter(!is.na(StateCode), Population > 0) %>%
-	group_by(StateCode) %>%
-	summarise(State = first(Province_State), Lat=mean(Lat), Long=mean(Long_), Population=sum(Population), Confirmed=sum(Confirmed_n), Deaths=sum(Deaths_n)) -> USStatesCovid19
-
-
+map.county %>% 
+	  left_join(Link.map.county, by=c("region","subregion")) ->  map.county 
 ```
 
 
 
 ```{r}
+###############################################################################################
+# Merge US census data and geo map data for state and counties: 
+# this is all state county demographic data not depending on covid data
+###############################################################################################
+# summary state and county data, with location and populaton metrics with STATE na d FIPS code as key
+
+USStates.Census %>% left_join(select(Link.map.state, -region), by="STATE") %>% ungroup -> USStates
+
+USCounties.Census %>% left_join(select(Link.map.county,-region,-subregion), by="FIPS") %>% ungroup -> USCounties
+```
+
+
+
+```{r}
+###############################################################################################
+# Johns Hopkins University Covid19 data: derive calculated data
+###############################################################################################
+
+# add STATE variable
+df %>% filter(!is.na(Admin2)) %>%
+	group_by(Province_State) %>% summarise %>% 
+	left_join(select(USStates, STNAME, STATE), by=c("Province_State"="STNAME")) -> Link
+
+# Derive Covid data: deltas, ranks, per cobservation and aggregated for county, state
+df %>% left_join(Link, by="Province_State") %>%
+	select(UID, FIPS, STATE, Province_State, County=Admin2, Date, Metric, n) %>%
+	pivot_wider(names_from=c("Metric"), values_from="n") %>% 
+	mutate(CFR = Deaths / Confirmed) %>%  # lots of NaN due to 0 Deaths and 0 Cases
+	pivot_longer(cols=c('Confirmed', 'Deaths', 'CFR'), names_to='Metric', values_to='n') -> df1 
+
+df1 %>% group_by(UID, Metric ) %>% 
+	arrange(Date) %>%
+	mutate(delta  = n - lag(n, 1, default=0), delta7  = n - lag(n, 7, default=0), delta14 = n - lag(n, 14, default=0), 
+				 deltasquare14 =  delta14 - lag(delta14, 14, default=0), rel14 =  delta14 / lag(delta14, 14, default=1)-1) %>% # increase new cases in 2 weeks, absolute and relative
+	mutate(rank = rank(-n, ties.method="min")) %>% # add more ranks?
+	pivot_longer(cols=c('n','delta','delta7', 'delta14', 'deltasquare14','rel14','rank'), names_to='Metric2', values_to='val') %>%
+  ungroup() -> USCounties.JHU.all
+
+df1 %>% group_by(Province_State, STATE, Metric, Date ) %>% 
+	summarise (n=sum(n)) %>%
+	arrange(Date) %>%
+	mutate(delta  = n - lag(n, 1, default=0), delta7  = n - lag(n, 7, default=0), delta14 = n - lag(n, 14, default=0), 
+				 deltasquare14 =  delta14 - lag(delta14, 14, default=0), rel14 =  delta14 / lag(delta14, 14, default=1)-1) %>% # increase new cases in 2 weeks, absolute and relative
+	mutate(rank = rank(-n, ties.method="min")) %>% # add more ranks?
+	pivot_longer(cols=c('n','delta','delta7', 'delta14', 'deltasquare14','rel14','rank'), names_to='Metric2', values_to='val') %>%
+  ungroup() -> USStates.JHU.all
+```
+
+
+```{r}
 ####################################################################
-# Counties of interest: top 100 of confirmed Covid19 cases
+# Derive Summary JHU Covid data as of last Date
+####################################################################
+USStates.JHU.all %>%  
+	group_by(Province_State, STATE, Metric,  Metric2) %>% 
+	arrange(Date) %>%
+	summarise_all(last) %>% 
+	ungroup() ->  USStates.JHU
+
+USCounties.JHU.all %>%
+	group_by(UID, FIPS, Metric, Metric2) %>% 
+	arrange(Date) %>%
+	summarise_all(last) %>% 
+	ungroup() ->  USCounties.JHU
+
+# to do add: max n, max delta, smoothed n, max smoothed n	
+```
+
+
+```{r}
+####################################################################
+# Tidy data sets: all dates and summaries for States and Counties
 ####################################################################
 
-df1 %>% left_join(select(USCountiesCovid19, UID, CaseRank, DeathsRank), by="UID") -> df2
+USStates.JHU.all %>% left_join(USStates, by="STATE") %>% ungroup ->  USStates.Covid19.all
+
+USCounties.JHU.all 	%>% left_join(USCounties, by="FIPS") %>% ungroup ->  USCounties.Covid19.all
+
+USStates.JHU 	%>% left_join(USStates, by="STATE") %>% ungroup ->  USStates.Covid19
+
+USCounties.JHU 	%>% left_join(USCounties, by="FIPS") %>% ungroup->  USCounties.Covid19
 ```
+
 
 # Graphical Exploration
 
 ## Per State
 
-
-```{r,fig.width=13}
-####################################################################
-# Confirmed Cases per State
-####################################################################
-df2 %>% filter(Metric== 'Confirmed') %>%
-	group_by(Province_State, Date) %>%
-	summarise(n=sum(n)) %>%	
-	{ group_by(., Province_State) %>%
-		summarise(MaxCases = max(n)) %>% 
-		top_n(20, wt=MaxCases) %>%
-		arrange(desc(MaxCases)) %>%
-		pull(Province_State) -> top
-    filter(., Province_State %in% top, n > 10) %>%
-   {	
-	ggplot(data=., aes(x=Date, y=n, colour=Province_State)) +
-  geom_point(shape=1, size=3) + 
-	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
-  geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(Province_State,ks(n,0.1),sep=",")), nudge_x=2) +
-	scale_x_date() +
-	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
-                labels = trans_format("log10", math_format(10^.x))) +
-	labs(title="Confirmed Cases per US State", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
-	theme_bw()
-	}}
-```
-
+### Confirmed Cases US State Map
 
 ```{r,fig.width=13}
 ####################################################################
 # Confirmed Cases US Map
 ####################################################################
-map_data("state") %>% 
-	mutate_at(vars(region), toTitleCase) %>%
-	left_join(USStatesCovid19, by=c("region"="State")) %>%
+USStates.Covid19 %>%
+	filter(Metric == "Confirmed", Metric2 == 'n') %>% 
+	select(STATE, val) %>%
+	left_join(map.state, ., by="STATE") %>% 
   ggplot(aes(x = long, y = lat)) +
-  geom_polygon(aes(group = group, fill=Confirmed), colour = "white") +
-	geom_text(data=filter(USStates,!State %in% c("Alaska","Hawaii")), aes(label=State, x = Long, y = Lat), size=3, colour = "white", hjust=.5) +
+  geom_polygon(aes(group = group, fill=val), colour = "white") +
+	geom_text(data=filter(USStates, !STNAME %in% c("Alaska","Hawaii")), aes(label=STNAME, x = Long, y = Lat), size=3, colour = "black", hjust=.5) +
   geom_point(data=data.frame(lat=42.8126, long=-70.8773), size=4, shape=1, color='red') +
 	theme_map() + 
 	coord_map() +
-	labs(x = NULL, y = NULL, title = "USA Covid-19 confirmed cases per state", 
-         subtitle = max(df2$Date), 
+	labs(x = NULL, y = NULL, title = "USA Covid-19 Confirmed Cases per US State", 
+         subtitle = paste('Date :', max(USStates.Covid19.all$Date)), 
          caption = "Geometries: ggplot2 maps; Covid-19 Data: JHU CSSE") +
 	theme(legend.position = "right") +	
 	scale_fill_viridis( option = "inferno", direction = +1, name = "Cases", limits= c(0,NA), trans= "log1p", breaks=10^seq(0,5), labels = label_number(accuracy = 1,big.mark = ','),
@@ -285,95 +334,233 @@ map_data("state") %>%
                                              draw.ulim = F, title.position = 'top', title.vjust = 0.5, label.vjust = 0.5))
 ```
 
-TODO
-- increase/decrease in new cases in last two weeks
+### US State Map: New Cases yesterday
 
+todo: fix north dakota: delta seems to be -35 
+
+```{r,fig.width=13}
+####################################################################
+# US Map: New cases in the last day  
+####################################################################
+USStates.Covid19 %>%
+	filter(Metric == "Confirmed", Metric2 == 'delta') %>% 
+	select(STATE, val) %>%
+	left_join(map.state, ., by="STATE") %>% 
+  ggplot(aes(x = long, y = lat)) +
+  geom_polygon(aes(group = group, fill=val), colour = "white") +
+	geom_text(data=filter(USStates, !STNAME %in% c("Alaska","Hawaii")), aes(label=STNAME, x = Long, y = Lat), size=3, colour = "gray", hjust=.5) +
+  geom_point(data=data.frame(lat=42.8126, long=-70.8773), size=4, shape=1, color='red') +
+	theme_map() + 
+	coord_map() +
+	labs(x = NULL, y = NULL, title = "USA Covid-19 New Cases on Date", 
+         subtitle = paste('Date :', max(USStates.Covid19.all$Date)), 
+         caption = "Geometries: ggplot2 maps; Covid-19 Data: JHU CSSE") +
+	theme(legend.position = "right") +	
+	scale_fill_viridis( option = "inferno", direction = +1, name = "Cases", limits= c(0,NA), trans= "log1p", breaks=10^seq(0,5), labels = label_number(accuracy = 1,big.mark = ','),
+                      guide = guide_colorbar(direction = "vertical", barheight = unit(50, units = "mm"), barwidth = unit(3, units = "mm"),
+                                             draw.ulim = F, title.position = 'top', title.vjust = 0.5, label.vjust = 0.5))
+```
+
+###  US State Map: New Cases in the last 2 weeks
+
+
+```{r,fig.width=13}
+####################################################################
+# New Cases in the last 2 weeks US State Map
+####################################################################
+USStates.Covid19 %>%
+	filter(Metric == "Confirmed", Metric2 == 'delta14') %>% 
+	select(STATE, val) %>%
+	left_join(map.state, ., by="STATE") %>% 
+  ggplot(aes(x = long, y = lat)) +
+  geom_polygon(aes(group = group, fill=val), colour = "white") +
+	geom_text(data=filter(USStates, !STNAME %in% c("Alaska","Hawaii")), aes(label=STNAME, x = Long, y = Lat), size=3, colour = "black", hjust=.5) +
+  geom_point(data=data.frame(lat=42.8126, long=-70.8773), size=4, shape=1, color='red') +
+	theme_map() + 
+	coord_map() +
+	labs(x = NULL, y = NULL, title = "USA Covid-19 New Cases in last 2 weeks", 
+         subtitle = paste('Date :', max(USStates.Covid19.all$Date)), 
+         caption = "Geometries: ggplot2 maps; Covid-19 Data: JHU CSSE") +
+	theme(legend.position = "right") +	
+	scale_fill_viridis( option = "inferno", direction = +1, name = "New Cases", limits= c(0,NA), trans= "log1p", breaks=10^seq(0,5), labels = label_number(accuracy = 1,big.mark = ','),
+                      guide = guide_colorbar(direction = "vertical", barheight = unit(50, units = "mm"), barwidth = unit(3, units = "mm"),
+                                             draw.ulim = F, title.position = 'top', title.vjust = 0.5, label.vjust = 0.5))
+```
+
+
+
+###  US State Map: Increase in New Cases in the last 2 weeks
+
+need different color scale: green is negative increase, red is positive increase, black is neutral
+
+TO DO: fix rel14
+
+```{r,fig.width=13}
+####################################################################
+#  US State Map: Increase in New Cases in the last 2 weeks
+####################################################################
+USStates.Covid19 %>%
+	filter(Metric == "Confirmed", Metric2 == 'rel14') %>%
+	select(STATE, val) %>%
+	left_join(map.state, ., by="STATE") %>% 
+  ggplot(aes(x = long, y = lat)) +
+  geom_polygon(aes(group = group, fill=val), colour = "white") +
+	geom_text(data=filter(USStates, !STNAME %in% c("Alaska","Hawaii")), aes(label=STNAME, x = Long, y = Lat), size=3, colour = "black", hjust=.5) +
+  geom_point(data=data.frame(lat=42.8126, long=-70.8773), size=4, shape=1, color='red') +
+	theme_map() + 
+	coord_map() +
+	labs(title = "USA Covid-19 Increase in New Cases in last 2 weeks", 
+         subtitle = paste('Date :', max(USStates.Covid19.all$Date)), 
+         caption = "Geometries: ggplot2 maps; Covid-19 Data: JHU CSSE") +
+	theme(legend.position = "right") +	
+	scale_fill_gradient2(low="darkgreen", mid="white", high="darkred",
+											name = "Increase", labels = label_percent(accuracy = 1), limits=c(-1,1), oob=squish, 
+                      guide = guide_colorbar(direction = "vertical", barheight = unit(50, units = "mm"), barwidth = unit(3, units = "mm"),
+                                             draw.ulim = F, title.position = 'top', title.vjust = 0.5, label.vjust = 0.5))
+```
+
+### Top N States Confirmed Cases
+
+```{r,fig.width=13}
+####################################################################
+# Confirmed Cases per State
+####################################################################
+gettop <- function(df, n=25) { group_by(df, STNAME) %>% summarise(val = max(val)) %>% top_n(n, wt=val) %>% arrange(desc(val)) %>% pull(STNAME) }
+
+
+USStates.Covid19.all %>%  
+	filter(Metric == "Confirmed", Metric2 == 'n') %>%
+	filter(., STNAME %in% gettop(.,25), val > 9)  %>%
+	  { ggplot(data=., aes(x=Date, y=val, colour=STNAME)) +
+      geom_point(shape=1, size=3) + 
+	    geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
+      geom_label_repel(data = filter(., Date == max(Date)), aes(label = paste(USPS,ks(val,0.1),sep=",")), nudge_x=2) +
+	    scale_x_date() +
+	    scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                    labels = trans_format("log10", math_format(10^.x))) +
+	    labs(title="Confirmed Cases for top 25 US States", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
+	    theme_bw() + theme(legend.position = "none")
+	}
+```
+
+
+### Top 25 States New Cases 
 
 ```{r,fig.width=13}
 ####################################################################
 # New Confirmed Cases per State
 ####################################################################
-df2 %>% filter(Metric== 'Confirmed') %>%
-	group_by(Province_State) %>%
-	arrange(n) %>%
-	mutate(NewCases = n-lag(n, default=0)) %>%
-	group_by(Province_State, Date) %>%
-	summarise(NewCases = sum(NewCases)) %>%	
-	{ group_by(., Province_State) %>%
-		summarise(MaxNewCases = max(NewCases)) %>% 
-		top_n(20, wt=MaxNewCases) %>%
-		arrange(desc(MaxNewCases)) %>%
-		pull(Province_State) -> top
-    filter(., Province_State %in% top, NewCases > 9) %>%
-   {	
-	ggplot(data=., aes(x=Date, y=NewCases, colour=Province_State)) +
-  geom_point(shape=1, size=3) + 
-	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
-  geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(Province_State,ks(NewCases,0.1),sep=",")), nudge_x=2) +
-	scale_x_date() +
-	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
-                labels = trans_format("log10", math_format(10^.x))) +
-	labs(title="New Confirmed Cases per US State", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
-	theme_bw()
-	}}
+
+USStates.Covid19.all %>%  
+	filter(Metric == "Confirmed", Metric2 == 'delta') %>%
+	filter(., STNAME %in% gettop(.,25), val > 9)  %>%
+  {	ggplot(data=., aes(x=Date, y=val, colour=STNAME)) +
+    geom_point(shape=1, size=3) + 
+	  geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
+    geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(USPS,ks(val,0.1),sep=",")), nudge_x=2) +
+	  scale_x_date() +
+	  scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                  labels = trans_format("log10", math_format(10^.x))) +
+	  labs(title="New Confirmed Cases for top 25 US States", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
+	  theme_bw() + theme(legend.position = "none")
+	}
 ```
+
+###  New Cases per Day, all states
+
+```{r,fig.width=18, fig.height=13}
+USStates.Covid19.all %>%  
+	filter(Metric == "Confirmed", Metric2 == 'delta', val > 0) %>%
+	group_by(STNAME) %>%
+  {	ggplot(data=., aes(x=Date, y=val)) +
+    geom_point(shape=1, size=2) + 
+	  geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
+    geom_label_repel(data=filter(., Date==max(Date) | val==max(val)), aes(label = val), nudge_x=2) +
+	  scale_x_date() +
+	  scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                  labels = trans_format("log10", math_format(10^.x))) +
+	  labs(title="New Confirmed Cases per US State", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
+	  theme_bw() +
+  	facet_wrap(vars(STNAME), ncol=7)
+	}
+```
+
+
+### Heat map New Cases per Day 
 
 ```{r,fig.width=13}
 ####################################################################
 # Graphical Exploration New Confirmed Cases per State: Heat map
 ####################################################################
-df2 %>% filter(Metric == 'Confirmed', !is.na(StateCode)) %>% 
-	group_by(`Province_State`,Date) %>% 
-	summarise(n=sum(n)) %>% 
-	group_by(`Province_State`) %>% 
-	mutate(d=abs(n-50)) %>% 
+USStates.Covid19.all %>%  
+	filter(Metric == "Confirmed", Metric2 == 'n') %>%
+	group_by(STNAME) %>% 
+	mutate(d=abs(val-50)) %>% 
 	arrange(d) %>% 
 	summarise_all(first) %>% 
-	select(`Province_State`, StartDate=Date) -> start
+	select(STNAME, StartDate=Date) -> start
 
-df2 %>% filter(Metric== 'Confirmed', !is.na(StateCode)) %>%
-	group_by(Province_State) %>%
-	arrange(n) %>%
-	mutate(NewCases = n-lag(n, default=0)) %>%
-	group_by(Province_State, Date) %>%
-	summarise(NewCases = sum(NewCases)) %>%	
-	left_join(start, by="Province_State") %>% 
-	ggplot(aes(x=Date, y=reorder(`Province_State`, as.integer(StartDate)))) +
-  geom_tile(aes(fill=NewCases)) + 
-	#geom_tile(data=start, aes(x=StartDate), fill='red',alpha=0.5) + 	
-	scale_x_date(limits = c(date("2020-02-29"),NA)) +
+USStates.Covid19.all %>%  
+	filter(Metric == "Confirmed", Metric2 == 'delta') %>% 
+	left_join(start, by="STNAME") %>% 
+	ggplot(aes(x=Date, y=reorder(STNAME, as.integer(StartDate)))) +
+  geom_tile(aes(fill=val)) + 
+	scale_x_date(limits = c(date("2020-02-29"), NA)) +
 	scale_y_discrete(position = "right")	+	
 	labs(title="US State New Confirmed Cases per Day", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="") +
 	theme_bw() +
 	theme(legend.position = "right") +	
-	scale_fill_viridis( option = "inferno", direction = +1, name = "Cases", limits= c(0,10000), trans= "log1p", breaks=10^seq(0,5), labels = label_number(accuracy = 1,big.mark = ','),
+	scale_fill_viridis( option = "inferno", direction = +1, name = "Cases", limits= c(0,NA), trans= "pseudo_log", breaks=10^seq(0,5), 
+											labels = label_number(accuracy = 1,big.mark = ','),
                       guide = guide_colorbar(direction = "vertical", barheight = unit(50, units = "mm"), barwidth = unit(3, units = "mm"),
                                              draw.ulim = F, title.position = 'top', title.vjust = 0.5, label.vjust = 0.5))
 
 ```
 
+### Heat map New Cases per Week 
+
+```{r,fig.width=13}
+####################################################################
+# Heat map:  New Confirmed Cases per week 
+####################################################################
+
+USStates.Covid19.all %>%  
+	filter(Metric == "Confirmed", Metric2 == 'delta7') %>% 
+	left_join(start, by="STNAME") %>% 
+	ggplot(aes(x=Date, y=reorder(STNAME, as.integer(StartDate)))) +
+  geom_tile(aes(fill=val)) + 
+	scale_x_date(limits = c(date("2020-02-15"), NA)) +
+	scale_y_discrete(position = "right")	+	
+	labs(title="US State New Confirmed Cases per Week", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="") +
+	theme_bw() +
+	theme(legend.position = "right") +	
+	scale_fill_viridis( option = "inferno", direction = +1, name = "Cases", limits= c(0,NA), trans= "pseudo_log", breaks=10^seq(0,5), 
+											labels = label_number(accuracy = 1,big.mark = ','),
+                      guide = guide_colorbar(direction = "vertical", barheight = unit(50, units = "mm"), barwidth = unit(3, units = "mm"),
+                                             draw.ulim = F, title.position = 'top', title.vjust = 0.5, label.vjust = 0.5))
+
+```
+
+### Heat map: Deaths per Day
+
 ```{r,fig.width=13}
 ####################################################################
 # Graphical Exploration New Deaths per State: Heat map
 ####################################################################
-df2 %>% filter(Metric == 'Deaths', !is.na(StateCode)) %>% 
-	group_by(`Province_State`,Date) %>% 
-	summarise(n=sum(n)) %>% 
-	group_by(`Province_State`) %>% 
-	mutate(d=abs(n-50)) %>% 
+USStates.Covid19.all %>%  
+	filter(Metric == "Deaths", Metric2 == 'n') %>%
+	group_by(STNAME) %>% 
+	mutate(d=abs(val-50)) %>% 
 	arrange(d) %>% 
 	summarise_all(first) %>% 
-	select(`Province_State`, StartDate=Date) -> start
+	select(STNAME, StartDate=Date) -> start
 
-df2 %>% filter(Metric== 'Deaths', !is.na(StateCode)) %>%
-	group_by(Province_State) %>%
-	arrange(n) %>%
-	mutate(NewDeaths = n-lag(n, default=0)) %>%
-	group_by(Province_State, Date) %>%
-	summarise(NewDeaths = sum(NewDeaths)) %>%	
-	left_join(start, by="Province_State") %>% 
-	ggplot(aes(x=Date, y=reorder(`Province_State`, as.integer(StartDate)))) +
-  geom_tile(aes(fill=NewDeaths)) + 
+USStates.Covid19.all %>%  
+	filter(Metric == "Deaths", Metric2 == 'delta') %>%
+	left_join(start, by="STNAME") %>% 
+	group_by(STNAME) %>% 
+	ggplot(aes(x=Date, y=reorder(STNAME, as.integer(StartDate)))) +
+  geom_tile(aes(fill=val)) + 
 	#geom_tile(data=start, aes(x=StartDate), fill='red',alpha=0.5) + 	
 	scale_x_date(limits = c(date("2020-02-29"),NA)) +
 	scale_y_discrete(position = "right")	+	
@@ -385,53 +572,88 @@ df2 %>% filter(Metric== 'Deaths', !is.na(StateCode)) %>%
                                              draw.ulim = F, title.position = 'top', title.vjust = 0.5, label.vjust = 0.5))
 
 ```
-todo
-- sort per total number of deaths
-- states with 2 weeks of lower than 10/day new encounters
-- red states vs blue states
-
-
-## per County
-
+### Heat map: Deaths per Week
 
 ```{r,fig.width=13}
 ####################################################################
-# Graphical Exploration Confirmed Cases per County
+# Graphical Exploration New Deaths per State: Heat map
 ####################################################################
-df2 %>% filter(Metric== 'Confirmed', CaseRank < 25, n>10) %>%
+
+USStates.Covid19.all %>%  
+	filter(Metric == "Deaths", Metric2 == 'delta7') %>%
+	left_join(start, by="STNAME") %>% 
+	group_by(STNAME) %>% 
+	ggplot(aes(x=Date, y=reorder(STNAME, as.integer(StartDate)))) +
+  geom_tile(aes(fill=val)) + 
+	#geom_tile(data=start, aes(x=StartDate), fill='red',alpha=0.5) + 	
+	scale_x_date(limits = c(date("2020-02-29"),NA)) +
+	scale_y_discrete(position = "right")	+	
+	labs(title="US State New Deaths per Week", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="") +
+	theme_bw() +
+	theme(legend.position = "right") +	
+	scale_fill_viridis( option = "inferno", direction = +1, name = "Cases", limits= c(0,NA), trans= "log1p", breaks=10^seq(0,5), labels = label_number(accuracy = 1,big.mark = ','),
+                      guide = guide_colorbar(direction = "vertical", barheight = unit(50, units = "mm"), barwidth = unit(3, units = "mm"),
+                                             draw.ulim = F, title.position = 'top', title.vjust = 0.5, label.vjust = 0.5))
+
+```
+
+todo
+- sort per total number of deaths
+- states with 2 weeks of lower than 10/day new encounters
+- per capita
+- red states vs blue states
+
+
+## Per County
+
+###  Confirmed Cases per top 25 County in US
+
+```{r,fig.width=13}
+####################################################################
+# Graphical Exploration Confirmed Cases per top 25 County in US
+####################################################################
+topn <- function(df,n=25) group_by(df, UID) %>% summarise(val = max(val)) %>% top_n(n, wt=val) %>% pull(UID)
+	
+USCounties.Covid19.all %>% 
+	filter(Metric == "Confirmed", Metric2 == 'n') %>% 
+  filter(., UID %in% topn(.), val > 9) %>%
 	{
-	ggplot(data=.,aes(x=Date, y=n, group=County, colour=Province_State)) +
+	ggplot(data=.,aes(x=Date, y=val, group=FIPS, colour=USPS)) +
   geom_point(shape=1, size=3) + 
 	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
-	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(County,StateCode,ks(n,0.1),sep=",")), nudge_x=2) +
+	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(CTYNAME,USPS,ks(val,0.1),sep=",")), nudge_x=2) +
 	scale_x_date() +
 	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
                 labels = trans_format("log10", math_format(10^.x))) +
 	labs(title="Confirmed Cases per Top US County", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
-	theme_bw()
+	theme_bw() + theme(legend.position = "none")
 	}
 ```
 
 
-## Massachussets and near NBPT
+### Confirmed Cases in Massachussets Counties
 
 ```{r,fig.width=13}
 ####################################################################
 # Graphical Exploration Confirmed Cases in MAss
 ####################################################################
-df2 %>% filter(Metric== 'Confirmed', StateCode == "MA", n>10) %>%
+USCounties.Covid19.all %>% 
+	filter(Metric == "Confirmed", Metric2 == 'n') %>% 
+  filter(USPS == "MA", val>9) %>%
 	{
-	ggplot(data=.,aes(x=Date, y=n, colour=County)) +
+	ggplot(data=.,aes(x=Date, y=val, colour=CTYNAME)) +
   geom_point(shape=1, size=3) + 
 	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
-	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(County,ks(n,0.01),sep=",")), nudge_x=2) +
+	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(CTYNAME,ks(val,0.01),sep=",")), nudge_x=2) +
 	scale_x_date() +
 	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
                 labels = trans_format("log10", math_format(10^.x))) +
 	labs(title="Confirmed Cases in MA", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
-	theme_bw()
+	theme_bw() 
 	}
 ```
+
+### Confirmed Cases in Counties with close proximity to Newburyport, MA
 
 ```{r,fig.width=13}
 ####################################################################
@@ -441,34 +663,52 @@ df2 %>% filter(Metric== 'Confirmed', StateCode == "MA", n>10) %>%
 
 NBPT <- c(Lat=42.8126,Long=-70.8773)
 
-toRadians <- function(x) pi*x/180
-
-Distance <- function(lat1,lon1,lat2,lon2){
-  phi1 = toRadians(lat1) 
-  phi2 = toRadians(lat2)
-  dlambda = toRadians(lon2-lon1) 
-  R = 6371e3; #Radius of the earth, gives d in metres
-  acos( sin(phi1)* sin(phi2) + cos(phi1)*cos(phi2) * cos(dlambda) ) * R;
-}
-
+# top 10 closest countis near NMT
 USCounties %>% 
-	mutate(Dist= Distance(Lat, Long_, NBPT['Lat'], NBPT['Long'])) %>%
+	mutate(Dist= Distance(Lat, Long, NBPT['Lat'], NBPT['Long'])) %>%
 	top_n(10, wt=-Dist) %>% 
-	pull(UID) -> nearNBPT
+	pull(FIPS) -> nearNBPT
 
-df2 %>% filter(Metric== 'Confirmed', UID %in% nearNBPT, n>10) %>%
+USCounties.Covid19.all %>% 
+	filter(Metric == "Confirmed", Metric2 == 'n') %>% 
+  filter(FIPS %in% nearNBPT, val>9) %>%
 	{
-	ggplot(data=.,aes(x=Date, y=n, colour=UID)) +
+	ggplot(data=.,aes(x=Date, y=val, colour=CTYNAME)) +
   geom_point(shape=1, size=3) + 
 	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
-	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(County, StateCode, ks(n,0.01),sep=",")), nudge_x=2) +
+	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(CTYNAME, USPS, ks(val,0.01),sep=",")), nudge_x=2) +
 	scale_x_date() +
 	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
                 labels = trans_format("log10", math_format(10^.x))) +
 	labs(title="Confirmed Cases near NBPT", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
-	theme_bw()
+	theme_bw() + theme(legend.position = "none")
 	}
 ```
+
+### New Confirmed Cases in US Counties near Newburyport, MA
+
+```{r,fig.width=13}
+####################################################################
+# Graphical Exploration New Confirmed Cases in Counties with close proximity to Newburyport, MA, linear scale
+####################################################################
+
+USCounties.Covid19.all %>% 
+	filter(Metric == "Confirmed", Metric2 == 'delta') %>% 
+  filter(FIPS %in% nearNBPT, val>0) %>%
+	group_by(UID) %>%
+	{
+	ggplot(data=.,aes(x=Date, y=val, colour=CTYNAME)) +
+  geom_point(shape=1, size=3) + #geom_line() + 
+	geom_smooth(formula ='y ~ x',method = 'loess', span=0.20, se=FALSE) +
+	geom_label_repel(data=filter(., Date==max(Date) | val==max(val)), aes(label = paste(CTYNAME, USPS, val,sep=",")), nudge_x=2) +
+	scale_x_date() +
+	labs(title="New Confirmed Cases per Day near NBPT", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases/Day") +
+	theme_bw() + theme(legend.position = "none")
+	  }
+```
+
+
+#### Same but log scale
 
 
 ```{r,fig.width=13}
@@ -476,297 +716,221 @@ df2 %>% filter(Metric== 'Confirmed', UID %in% nearNBPT, n>10) %>%
 # Graphical Exploration New Confirmed Cases in Counties with close proximity to Newburyport, MA
 ####################################################################
 
-df2 %>% filter(Metric == 'Confirmed', UID %in% nearNBPT) %>%
-		group_by(UID) %>%
-	  arrange(Date) %>%
-		mutate(NewCases = n-lag(n, default=0)) 	%>% 
-	  ungroup() %>%
-	  filter(NewCases > 0) %>% 
+USCounties.Covid19.all %>% 
+	filter(Metric == "Confirmed", Metric2 == 'delta') %>% 
+  filter(FIPS %in% nearNBPT, val>0) %>%
+	group_by(UID) %>%
 	{
-	  ggplot(data=., aes(x=Date, y=NewCases, color=UID)) +
-    geom_point(shape=1, size=3) + 
-	  geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
-	  geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(County, StateCode, ks(NewCases,0.01),sep=",")), nudge_x=2) +
-	  scale_x_date() +
+	ggplot(data=.,aes(x=Date, y=val, colour=CTYNAME)) +
+  geom_point(shape=1, size=3) + 
+	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
+	geom_label_repel(data=filter(., Date==max(Date) | val==max(val)), aes(label = paste(CTYNAME, USPS, val,sep=",")), nudge_x=2) +
+	scale_x_date() +
 	  scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
                   labels = trans_format("log10", math_format(10^.x))) +
-	  labs(title="New Confirmed Cases near NBPT", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
-	  theme_bw()
+	  labs(title="New Confirmed Cases per Day near NBPT", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases/Day") +
+	  theme_bw() + theme(legend.position = "none")
 	  }
 ```
 
-```{r,fig.width=13}
-####################################################################
-# Graphical Exploration New Confirmed Cases in Counties with close proximity to Newburyport, MA, linear scale
-####################################################################
 
-df2 %>% filter(Metric == 'Confirmed', UID %in% nearNBPT) %>%
-		group_by(UID) %>%
-	  arrange(Date) %>%
-		mutate(NewCases = n-lag(n, default=0)) 	%>% 
-	  ungroup() %>%
-	  filter(NewCases > 0) %>% 
-	{
-	  ggplot(data=., aes(x=Date, y=NewCases, color=UID)) +
-    geom_point(shape=1, size=3) + 
-	  geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
-	  geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(County, StateCode, ks(NewCases,0.01),sep=",")), nudge_x=2) +
-	  scale_x_date() +
-	  labs(title="New Confirmed Cases near NBPT", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
-	  theme_bw()
-	  }
-```
-
+###  Daily Growth of Confirmed Cases per County, top25
 
 ```{r,fig.width=13}
 ####################################################################
 # Graphical Exploration Daily Growth of Confirmed Cases per County
 ####################################################################
 
-df2 %>% filter(Metric== 'Confirmed', !County %in% c('Unassigned','Out of GA')) %>%
-	  group_by(UID) %>%
-	  arrange(Date) %>%
-		mutate(NewCases = n-lag(n, default=0)) 	%>% 
-	  ungroup() %>%
-	{	
-		group_by(., UID) %>%
-		summarise(MaxCases = max(NewCases)) %>% 
-		top_n(25, wt=MaxCases) %>%
-		pull(UID) -> top
-    filter(., UID %in% top, NewCases>10) %>%
-    {	ggplot(., aes(x=Date, y=NewCases, group=UID, colour=StateCode)) +
-    			geom_point(shape=1, size=3) + 
-    			geom_smooth(formula ='y ~ x',method = 'loess', se=FALSE) +
-    			geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(County,StateCode, ks(NewCases,0.1),sep=",")), nudge_x=2) +
-    			scale_x_date() +
-    			scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
-    										labels = trans_format("log10", math_format(10^.x))) +
-    			labs(title="New Confirmed Cases per US County", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="New Cases/day") +
-    			theme_bw()
-    	}}
-
+USCounties.Covid19.all %>% 
+	filter(Metric == "Confirmed", Metric2 == 'delta') %>% 
+  filter(., UID %in% topn(.,25), val > 9) %>%
+	{
+	ggplot(data=.,aes(x=Date, y=val, group=FIPS, colour=USPS)) +
+  geom_point(shape=1, size=3) + 
+	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
+	geom_label_repel(data=filter(., Date==max(Date) | val==max(val)), aes(label = paste(CTYNAME,USPS,val,sep=",")), nudge_x=2) +
+	scale_x_date() +
+	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                labels = trans_format("log10", math_format(10^.x))) +
+	labs(title="New Confirmed Cases per Top US County", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
+	theme_bw() + theme(legend.position = "none")
+	}		
 ```
 
+- New York -> Chicago -> LA  
 
 todo
 - time heatmap of top50 counties
 
-# USA Maps
-todo
-- fix data mapping 
+# USA County Maps
 
-```{r}
+- confirmed delta7: increase of confirmed cases in the last week 
+- confirmed n: total confirmed cases
+- deaths delta7: increase of deaths in the last week 
+- deaths n: total deaths
+- per capita:  per 100k inhabitants 
+
+```{r,fig.width=18, fig.height=20}
 ####################################################################
-# Graphical Exploration Confirmed Cases US Counties
+# Graphical Exploration US Counties hatmaps on geomaps
 ####################################################################
 # see https://timogrossenbacher.ch/2016/12/beautiful-thematic-maps-with-ggplot2-only/'
 # see https://ggplot2.tidyverse.org/reference/coord_map.html
+# see https://rpubs.com/omicsdata/faceted_heatmap
 
-drawStates <- function() geom_path(data=map_data("state"), aes(x = long, y = lat, group = group), colour = "white", size=.2)
-drawLabels <- function(L) labs(x = NULL, y = NULL, subtitle = max(df2$Date), title = paste("USA Covid-19",L), caption = "Geometries: ggplot2 maps; Covid-19 Data: JHU CSSE")
+#todo fix color scale breaks
+drawLabels <- function(L) labs(x = NULL, y = NULL, title = paste(L), subtitle = paste("Date =", date()), caption = "Geometries: ggplot2 maps; Covid-19 Data: JHU CSSE")
 
-map_data("county") %>%
-	left_join(mutate_at(CountyLinkTable, vars(UID), as.character), by=c("region","subregion")) %>%
-	left_join(mutate_at(USCountiesCovid19, vars(UID), as.character), by="UID") %>% 
-	mutate(PerCap_n = 100000 * Confirmed_n / Population, PerCap_delta = 100000 * Confirmed_delta / Population) %>% 
-  ggplot(aes(x = long, y = lat)) +
+# 	pivot_longer(cols= c('val','valPerCap'), names_to='Metric3', values_to='val')  %>% 
+
+PlotCountyMap <- function (m1="Confirmed", m2='n', pc=FALSE) {
+	filter(USCounties.Covid19 , Metric == m1, Metric2 == m2 ) %>% 
+	mutate(val = pc * (10^5 * val / POPESTIMATE2019) + (1-pc) *val) %>% 
+	left_join(map.county, ., by="FIPS") %>% 
+	ggplot(aes(x = long, y = lat)) +
+  geom_polygon(aes(group = group, fill=val)) +
+  geom_path(data=map.state, aes(x = long, y = lat, group = group), colour = "white", size=.2) +
+	drawLabels(paste(m1, m2, ", per Capita =", pc)) +	
   theme_map() + 
 	coord_map () +
 	theme(legend.position = "right") +
-	scale_fill_viridis( option = "inferno", direction = +1, name = "Cases", limits= c(0,NA), 
-											trans= "log1p", breaks=10^seq(0,5), labels = label_number(accuracy = 1, big.mark = ','),
+	scale_fill_viridis( option = "inferno", direction = +1, name = "", limits= c(0,NA), breaks=10^seq(0,5),
+											trans= "pseudo_log", labels = label_number(accuracy = 1, big.mark = ','),
                       guide = guide_colorbar(direction = "vertical", barheight = unit(50, units = "mm"), barwidth = unit(3, units = "mm"),
-                                             draw.ulim = F, title.position = 'top', title.vjust = 0.5, label.vjust = 0.5)) -> p0
-	
-p0 + geom_polygon(aes(group = group, fill=Confirmed_n)) + drawStates() -> p1
-p0 + geom_polygon(aes(group = group, fill=PerCap_n)) + drawStates() -> p2
-p0 + geom_polygon(aes(group = group, fill=Confirmed_delta)) + drawStates() -> p3
-p0 + geom_polygon(aes(group = group, fill=PerCap_delta)) + drawStates() -> p4
-```
-   
-```{r,fig.width=13}
-p1 + drawLabels("Confirmed Cases")
-```
+                                             draw.ulim = F, title.position = 'top', title.vjust = 0.5, label.vjust = 0.5))
+}	
 
+# generate county plots
+data.frame(pc=c(FALSE,TRUE), m1=c("Confirmed",'Deaths'), m2=c('n','delta7')) %>% expand(m1,m2, pc)  %>% 
+	{ mapply(PlotCountyMap, m1=.$m1, m2=.$m2, pc=.$pc, SIMPLIFY = FALSE) } %>%
+  grid.arrange( grobs = ., nrow=4, heights=rep(4,4))
+```   
 
+# Animated heat maps 
 
-
-   
-```{r,fig.width=13}
-p2 + drawLabels("Cases per Capita (per 100k)")
-```
-
-to do: fix gray countie in SD
-   
-```{r,fig.width=13}
-p3 + drawLabels("New Cases")
-```
-
-todo fix grey counties
-
-```{r,fig.width=13}
-p4 + drawLabels("New Cases per Capita (per 100k)")
-```
-
-todo fix grey counties
- 
- # 2 week trend new cases, this needs some work
- 
-```{r,fig.width=13}
-map_data("county") %>%
-	left_join(mutate_at(CountyLinkTable, vars(UID), as.character), by=c("region","subregion")) %>%
-	left_join(mutate_at(USCountiesCovid19, vars(UID), as.character), by="UID") %>% 
-  ggplot(aes(x = long, y = lat)) +
-  theme_map() + 
-	coord_map () +
-	theme(legend.position = "right") +
-	scale_fill_viridis( option = "plasma", direction = +1, name = "Trend", limits= c(-10,10), 
-											breaks=seq(-5,5), labels = label_percent(accuracy = 1),
-                      guide = guide_colorbar(direction = "vertical", barheight = unit(50, units = "mm"), barwidth = unit(3, units = "mm"),
-                                             draw.ulim = F, title.position = 'top', title.vjust = 0.5, label.vjust = 0.5)) +
-	geom_polygon(aes(group = group, fill=Confirmed_rel)) + drawStates() +
-  drawLabels("Relative Increase New Cases in last two weeks ")
-```
-
-```{r,fig.width=13}
-####################################################################################################
-#grid.arrange(p1, p2, p3, p4, ncol=2) %>% ggsave(paste0("USA_Cases_",max(df2$Date),".png"), plot=.)
-####################################################################################################
-```
-
-```{r}
-####################################################################
-# Graphical Exploration Deaths US Counties
-####################################################################
-
-map_data("county") %>%
-	left_join(mutate_at(CountyLinkTable, vars(UID), as.character), by=c("region","subregion")) %>%
-	left_join(mutate_at(USCountiesCovid19, vars(UID), as.character), by="UID") %>% 
-	mutate(PerCap_n = 100000 * Deaths_n / Population, PerCap_delta = 100000 * Deaths_delta / Population) %>% 
-  ggplot(aes(x = long, y = lat)) +
-  theme_map() + 
-	coord_map () +
-	theme(legend.position = "right") +
-	scale_fill_viridis( option = "inferno", direction = +1, name = "Deaths", limits= c(0,NA), 
-											trans= "log1p", breaks=10^seq(0,5), labels = label_number(accuracy = 1, big.mark = ','),
-                      guide = guide_colorbar(direction = "vertical", barheight = unit(50, units = "mm"), barwidth = unit(3, units = "mm"),
-                                             draw.ulim = F, title.position = 'top', title.vjust = 0.5, label.vjust = 0.5)) -> d0
-	
-d0 + geom_polygon(aes(group = group, fill=Deaths_n)) + drawStates() -> d1
-d0 + geom_polygon(aes(group = group, fill=PerCap_n)) + drawStates() -> d2
-d0 + geom_polygon(aes(group = group, fill=Deaths_delta)) + drawStates() -> d3
-d0 + geom_polygon(aes(group = group, fill=PerCap_delta)) + drawStates() -> d4
-```
-
-
-```{r,fig.width=13}
-d1 + drawLabels("Deaths")
-```
-
-```{r,fig.width=13}
-d2 + drawLabels("Deaths per Capita")
-```
-
-```{r,fig.width=13}
-d3 + drawLabels("New Deaths")
-```
-
-```{r,fig.width=13}
-d4 + drawLabels("New Deaths per Capita")
-```
-
-```{r,fig.width=13}
-####################################################################################################
-#grid.arrange(d1, d2, d3, d4, ncol=2) %>% ggsave(paste0("USA_Deaths_",max(df2$Date),".png"), plot=.)
-####################################################################################################
-
-```
-
-
-# Animated heat maps: confirmed cases and new cases over time per US county
+confirmed cases and new cases over time per US county
 
 ```{r,fig.width=13}
 ####################################################################
 # Graphical Exploration Confirmed Cases in Counties with close proximity to Newburyport, MA
 ####################################################################
-library(gganimate)
-library(gifski)
-library(transformr)
-library(tweenr)
 
-
-NBPT <- c(Lat=42.8126,Long=-70.8773)
-
-USCounties %>% 
-	mutate(Dist= Distance(Lat, Long_, NBPT['Lat'], NBPT['Long'])) %>%
-#	top_n(100, wt=-Dist) %>% 
-	select(UID, StateCode) -> close
-
-map_data("state") %>%
-	left_join(StateLinkTable, by="region") %>% 
-	filter(StateCode %in% pull(close,StateCode)) -> closestates
-
-df2 %>% filter(Metric == "Confirmed") %>%
-	group_by(UID) %>%
-	arrange(Date) %>%
-	mutate(delta = n - lag(n, default=0)) %>%
-	mutate(delta=if_else(delta<0,0, delta)) %>%
-  filter(Date >= date("2020-03-01")) %>%
-	ungroup() %>%
-	mutate_at(vars(UID), as.character) %>% 
-	select(UID, Date, n, delta) -> df3
-
-map_data("county") %>%
-	left_join(mutate_at(CountyLinkTable, vars(UID), as.character), by=c("region","subregion")) %>% 
-	filter(UID %in% pull(close,UID)) %>% 
-	left_join(df3, by="UID") %>% 
-  ggplot(aes(x = long, y = lat)) +
+# outputs a gif 
+AnimateCountyMap <- function (giffile, m1="Confirmed", m2='n', pc=FALSE) {
+	filter(USCounties.Covid19.all , Metric == m1, Metric2 == m2 ) %>% 
+	mutate(val = pc * (10^5 * val / POPESTIMATE2019) + (1-pc) *val) %>% 
+	left_join(map.county, ., by="FIPS") %>% 
+	ggplot(aes(x = long, y = lat)) +
+  geom_polygon(aes(group = group, fill=val)) +
+  geom_path(data=map.state, aes(x = long, y = lat, group = group), colour = "white", size=.2) +
+	drawLabels(paste(m1, m2, ", per Capita =", pc)) +
+	labs(title = paste("USA Covid-19", m1), caption = "Geometries: ggplot2 maps; Covid-19 Data: JHU CSSE") +
   theme_map() + 
 	coord_map () +
 	theme(legend.position = "right") +
-	scale_fill_viridis( option = "inferno", direction = +1, name = "Cases", limits= c(0,NA), 
-											trans= "log1p", breaks=10^seq(0,5), labels = label_number(accuracy = 1, big.mark = ','),
+	scale_fill_viridis( option = "inferno", direction = +1, name = "", limits= c(0,NA), breaks=10^seq(0,5),
+											trans= "pseudo_log", labels = label_number(accuracy = 1, big.mark = ','),
                       guide = guide_colorbar(direction = "vertical", barheight = unit(50, units = "mm"), barwidth = unit(3, units = "mm"),
-                                             draw.ulim = F, title.position = 'top', title.vjust = 0.5, label.vjust = 0.5)) -> a0
+                                             draw.ulim = F, title.position = 'top', title.vjust = 0.5, label.vjust = 0.5)) +
+	transition_time(Date, range=c(date("2020-2-15"), max(USStates.Covid19.all$Date))) +
+	ease_aes('linear') +	
+	labs(subtitle = "Date: {frame_time}")	-> p 
+	animate(p, width = 1920, height = 1080, fps=10, duration=10, end_pause=5) %>% 
+	anim_save(giffile, animation = .)
+}	
 
-a0 +	geom_polygon(aes(group = group, fill=n)) + 
-  geom_path(data=closestates, aes(x = long, y = lat, group = group), colour = "white", size=.2) +
-	labs(title = paste("USA Covid-19","Confirmed Cases"), caption = "Geometries: ggplot2 maps; Covid-19 Data: JHU CSSE") +
-  transition_time(Date) + 
-  labs(subtitle = "Date: {frame_time}") -> a1
-
-a0 +	geom_polygon(aes(group = group, fill=delta)) + 
-  geom_path(data=closestates, aes(x = long, y = lat, group = group), colour = "white", size=.2) +
-	labs(title = paste("USA Covid-19","New Confirmed Cases"), caption = "Geometries: ggplot2 maps; Covid-19 Data: JHU CSSE") +
-  transition_time(Date) + 
-  labs(subtitle = "Date: {frame_time}") -> a2
-```
-
-```{r }
-options('gganimate.renderer' = gifski_renderer())
-options(gganimate.dev_args = list(width = 1920, height = 1080))
-print.gif_image <- function(x, ...) knitr::include_graphics(x, ...) # Bug fix in ggannimate
-
-
-if(wday(today()) == 1) {
-	pull(df3,Date) %>% unique() %>% length() -> nframes
-  animate(a1, nframes= nframes, fps = 1, end_pause=10) -> gif1
-  animate(a2, nframes= nframes, fps = 1, end_pause=10) -> gif2
-  save(gif1,gif2,file="covidgifs.RData")
-}
-load("covidgifs.RData")
-```
-
-```{r}
-print(gif1)
+if(wday(today(), label=TRUE) == "Sat") { # this takes hours to compute, only do this once a week on Saturday
+	# generate county animations
+  data.frame(pc=c(FALSE,TRUE), m1=c("Confirmed",'Deaths'), m2=c('n','delta7')) %>% 
+		expand(m1,m2, pc)  %>% 
+	  mutate(gif = paste0(paste("USMap",m1, m2,pc,sep="_"),".gif")) %>%	
+		{ mapply(AnimateCountyMap, .$gif, m1=.$m1, m2=.$m2, pc=.$pc, SIMPLIFY = FALSE) }
+}	
 ```
 
 
-```{r}
-print(gif2)
+#### Total Confirmed Cases
+```{r, warning=FALSE, fig.width=21, message=FALSE}
+knitr::include_graphics("USMap_Confirmed_n_FALSE.gif")
+```
+
+#### Total Confirmed Cases per Capita
+
+```{r, warning=FALSE, fig.width=21, message=FALSE}
+knitr::include_graphics("USMap_Confirmed_n_TRUE.gif")
+```
+
+#### New Confirmed Cases per week
+
+```{r, warning=FALSE, fig.width=21, message=FALSE}
+knitr::include_graphics("USMap_Confirmed_delta7_FALSE.gif")
+```
+
+#### New Confirmed Cases per week per Capita
+
+```{r, warning=FALSE, fig.width=21, message=FALSE}
+knitr::include_graphics("USMap_Confirmed_delta7_TRUE.gif")
+```
+
+#### Total Deaths 
+```{r, warning=FALSE, fig.width=21, message=FALSE}
+knitr::include_graphics("USMap_Deaths_n_FALSE.gif")
+```
+
+#### Total Deaths per Capita
+```{r, warning=FALSE, fig.width=21, message=FALSE}
+knitr::include_graphics("USMap_Deaths_n_TRUE.gif")
+```
+
+#### Total Deaths per week
+```{r, warning=FALSE, fig.width=21, message=FALSE}
+knitr::include_graphics("USMap_Deaths_delta7_FALSE.gif")
+```
+
+#### Total Deaths per week per Capita
+```{r, warning=FALSE, fig.width=21, message=FALSE}
+knitr::include_graphics("USMap_Deaths_delta7_TRUE.gif")
 ```
 
 
+```{r, warning=FALSE, fig.width=21, message=FALSE}
+####################################################################
+# Animation
+####################################################################
+if(wday(today(),label=TRUE) == "Sat") { # takes hours, only do this once a week and save
+USStates.Covid19.all %>%
+  filter(Metric %in% c("Confirmed","Deaths"), Metric2 == "n") %>% 
+	pivot_wider(names_from=c("Metric"), values_from = "val") %>% 
+	ggplot(aes(x = Confirmed, y = Deaths, colour = STNAME)) +
+	geom_point(aes( size = POPESTIMATE2019)) +
+	#geom_label_repel(aes(label = USPS)) +
+	scale_x_log10(limits=c(100,NA), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+	scale_y_log10(limits=c(10,NA), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+	#theme(legend.position = "none") +
+	transition_time(Date, range=c(date("2020-03-01"),max(USStates.Covid19.all$Date))) +
+  ease_aes('linear') +
+	labs(subtitle = "Date: {frame_time}")	-> p  
+	animate(p, width = 1920/2, height = 1080/2, fps=10, duration=20, end_pause=10, rewind=TRUE)  %>%
+	anim_save("USAnimation.gif", animation = .)
+}	
+```
+
+```{r, warning=FALSE, fig.width=21, message=FALSE}
+knitr::include_graphics("USAnimation.gif")
+```
+
+TODO: 
+- CFR evolution 
+- testing data from https://covidtracking.com/data
+- annimation of states. cumm confirmed cases vs cumm deaths see https://covid19.who.int/explorer
+- plot highest cases as in https://covid19.who.int/
+- load 2016 election data: blue, red states, 2016 presidential elecions, Governors
+- oad geo state and county areas, population density
+- investigate correlation with state and county popuulation sensity
+- Covid and politics load sstate and county 2016 election results: red, vs blue and margin
+- investigate correlation with state and county election results
+- investigatte if politics explains something more than population density
+- add area and population densities
 
 References
 
