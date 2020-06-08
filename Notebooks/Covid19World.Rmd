@@ -229,7 +229,7 @@ df25 %>% filter(Metric== 'Confirmed', n > 50) %>%
 
 - Russia and Brazil outbreaks are a week later and fail to flatten their curve
 
-- Mid of March is outbreak  South America (Mexico, Peru, Chile, Ecuador) and Asia Middle east and India/pakistan
+- Mid of March is outbreak  South America (Mexico, Peru, Chile, Ecuador) and Asia Middle east and India/Pakistan
 
 
 ## Confirmed Cases for top 25 countries
