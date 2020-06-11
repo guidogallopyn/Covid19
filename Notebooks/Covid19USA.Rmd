@@ -317,11 +317,13 @@ USCounties.JHU 	%>% left_join(USCounties, by="FIPS") %>% ungroup->  USCounties.C
 ####################################################################
 USStates.Covid19 %>%
 	filter(Metric == "Confirmed", Metric2 == 'n') %>% 
-	select(STATE, val) %>%
-	left_join(map.state, ., by="STATE") %>% 
+	select(STATE, val, Lat, Long) %>% 
+	{
+	left_join(map.state, ., by="STATE") %>% 	
   ggplot(aes(x = long, y = lat)) +
   geom_polygon(aes(group = group, fill=val), colour = "white") +
 	geom_text(data=filter(USStates, !STNAME %in% c("Alaska","Hawaii")), aes(label=STNAME, x = Long, y = Lat), size=3, colour = "black", hjust=.5) +
+	geom_text(data=., aes(label=ks(val,acc=0.1), x = Long, y = Lat), size=3, colour = "black", vjust=2) +
   geom_point(data=data.frame(lat=42.8126, long=-70.8773), size=4, shape=1, color='red') +
 	theme_map() + 
 	coord_map() +
@@ -332,6 +334,7 @@ USStates.Covid19 %>%
 	scale_fill_viridis( option = "inferno", direction = +1, name = "Cases", limits= c(0,NA), trans= "log1p", breaks=10^seq(0,5), labels = label_number(accuracy = 1,big.mark = ','),
                       guide = guide_colorbar(direction = "vertical", barheight = unit(50, units = "mm"), barwidth = unit(3, units = "mm"),
                                              draw.ulim = F, title.position = 'top', title.vjust = 0.5, label.vjust = 0.5))
+	}
 ```
 
 ### US State Map: New Cases yesterday
@@ -344,11 +347,13 @@ todo: fix north dakota: delta seems to be -35
 ####################################################################
 USStates.Covid19 %>%
 	filter(Metric == "Confirmed", Metric2 == 'delta') %>% 
-	select(STATE, val) %>%
+	select(STATE, val,Long, Lat) %>%
+	{
 	left_join(map.state, ., by="STATE") %>% 
   ggplot(aes(x = long, y = lat)) +
   geom_polygon(aes(group = group, fill=val), colour = "white") +
-	geom_text(data=filter(USStates, !STNAME %in% c("Alaska","Hawaii")), aes(label=STNAME, x = Long, y = Lat), size=3, colour = "gray", hjust=.5) +
+	geom_text(data=filter(USStates, !STNAME %in% c("Alaska","Hawaii")), aes(label=STNAME, x = Long, y = Lat), size=3, colour = "green", hjust=.5) +
+	geom_text(data=., aes(label=val, x = Long, y = Lat), size=3, colour = "green", vjust=2) +
   geom_point(data=data.frame(lat=42.8126, long=-70.8773), size=4, shape=1, color='red') +
 	theme_map() + 
 	coord_map() +
@@ -359,6 +364,7 @@ USStates.Covid19 %>%
 	scale_fill_viridis( option = "inferno", direction = +1, name = "Cases", limits= c(0,NA), trans= "log1p", breaks=10^seq(0,5), labels = label_number(accuracy = 1,big.mark = ','),
                       guide = guide_colorbar(direction = "vertical", barheight = unit(50, units = "mm"), barwidth = unit(3, units = "mm"),
                                              draw.ulim = F, title.position = 'top', title.vjust = 0.5, label.vjust = 0.5))
+	}
 ```
 
 ###  US State Map: New Cases in the last 2 weeks
@@ -370,11 +376,13 @@ USStates.Covid19 %>%
 ####################################################################
 USStates.Covid19 %>%
 	filter(Metric == "Confirmed", Metric2 == 'delta14') %>% 
-	select(STATE, val) %>%
+	select(STATE, val, Lat, Long) %>%
+	{
 	left_join(map.state, ., by="STATE") %>% 
   ggplot(aes(x = long, y = lat)) +
   geom_polygon(aes(group = group, fill=val), colour = "white") +
-	geom_text(data=filter(USStates, !STNAME %in% c("Alaska","Hawaii")), aes(label=STNAME, x = Long, y = Lat), size=3, colour = "black", hjust=.5) +
+	geom_text(data=filter(USStates, !STNAME %in% c("Alaska","Hawaii")), aes(label=STNAME, x = Long, y = Lat), size=3, colour = "darkgreen", hjust=.5) +
+	geom_text(data=., aes(label=val, x = Long, y = Lat), size=3, colour = "darkgreen", vjust=2) +
   geom_point(data=data.frame(lat=42.8126, long=-70.8773), size=4, shape=1, color='red') +
 	theme_map() + 
 	coord_map() +
@@ -385,6 +393,7 @@ USStates.Covid19 %>%
 	scale_fill_viridis( option = "inferno", direction = +1, name = "New Cases", limits= c(0,NA), trans= "log1p", breaks=10^seq(0,5), labels = label_number(accuracy = 1,big.mark = ','),
                       guide = guide_colorbar(direction = "vertical", barheight = unit(50, units = "mm"), barwidth = unit(3, units = "mm"),
                                              draw.ulim = F, title.position = 'top', title.vjust = 0.5, label.vjust = 0.5))
+}
 ```
 
 
@@ -418,6 +427,43 @@ USStates.Covid19 %>%
                       guide = guide_colorbar(direction = "vertical", barheight = unit(50, units = "mm"), barwidth = unit(3, units = "mm"),
                                              draw.ulim = F, title.position = 'top', title.vjust = 0.5, label.vjust = 0.5))
 ```
+
+### Heat map New Cases per 2 Weeks relative to state maximum 
+
+```{r,fig.width=13}
+####################################################################
+# Graphical Exploration New Confirmed Cases per State: Heat map
+####################################################################
+USStates.Covid19.all %>%  
+	filter(Metric == "Confirmed", Metric2 == 'delta14') %>%
+	group_by(STNAME) %>% 
+	filter(val == max(val)) %>% 
+	select(STNAME, StartDate=Date) -> wave
+
+USStates.Covid19.all %>%  
+	filter(Metric == "Confirmed", Metric2 == 'delta14') %>% 
+	group_by(STNAME) %>% 
+	mutate(rval=val/max(val)) %>%
+	left_join(wave, by="STNAME") %>% 
+	ggplot(aes(x=Date, y=reorder(STNAME, as.integer(StartDate)))) +
+  geom_tile(aes(fill=rval)) + 
+	scale_x_date(limits = c(date("2020-02-29"), NA)) +
+	scale_y_discrete(position = "right")	+	
+	labs(title="New Confirmed Cases relative to State Peak", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="") +
+	theme_bw() +
+	theme(legend.position = "right") +	
+	scale_fill_viridis( option = "inferno", direction = +1, name = "Cases/Max(Cases)", limits= c(0,1), trans= "identity", breaks=(0:5)/5, 
+											labels = label_percent(),
+                      guide = guide_colorbar(direction = "vertical", barheight = unit(50, units = "mm"), barwidth = unit(3, units = "mm"),
+                                             draw.ulim = F, title.position = 'top', title.vjust = 0.5, label.vjust = 0.5))
+
+```
+
+Observations
+
+- peaks start as early as first week of April and as late as current date
+- there are two peak states: Nevada, Alaska, Florida, West Verginia, New Mexico, Kentucky, Tennesee, Oregon (3 peaks)
+
 
 ### Top N States Confirmed Cases
 
@@ -466,20 +512,20 @@ USStates.Covid19.all %>%
 	}
 ```
 
-###  New Cases per Day, all states
+###  New Cases per Day, normalized to peak, all states
 
 ```{r,fig.width=18, fig.height=13}
 USStates.Covid19.all %>%  
 	filter(Metric == "Confirmed", Metric2 == 'delta', val > 0) %>%
 	group_by(STNAME) %>%
-  {	ggplot(data=., aes(x=Date, y=val)) +
+	mutate(rval=val/max(val)) %>%
+  {	ggplot(data=., aes(x=Date, y=rval)) +
     geom_point(shape=1, size=2) + 
 	  geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
     geom_label_repel(data=filter(., Date==max(Date) | val==max(val)), aes(label = val), nudge_x=2) +
-	  scale_x_date() +
-	  scale_y_log10(limits=c(1,NA), breaks = trans_breaks("log10", function(x) 10^x),
-                  labels = trans_format("log10", math_format(10^.x))) +
-	  labs(title="New Confirmed Cases per US State", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
+	  scale_x_date(limits=c(date("2020-3-1"),NA)) +
+	  #scale_y_log10(limits=c(10,NA), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+	  labs(title="New Confirmed Cases per day", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
 	  theme_bw() +
   	facet_wrap(vars(STNAME), ncol=7)
 	}
@@ -517,29 +563,9 @@ USStates.Covid19.all %>%
 
 ```
 
-### Heat map New Cases per Week 
 
-```{r,fig.width=13}
-####################################################################
-# Heat map:  New Confirmed Cases per week 
-####################################################################
 
-USStates.Covid19.all %>%  
-	filter(Metric == "Confirmed", Metric2 == 'delta7') %>% 
-	left_join(start, by="STNAME") %>% 
-	ggplot(aes(x=Date, y=reorder(STNAME, as.integer(StartDate)))) +
-  geom_tile(aes(fill=val)) + 
-	scale_x_date(limits = c(date("2020-02-15"), NA)) +
-	scale_y_discrete(position = "right")	+	
-	labs(title="US State New Confirmed Cases per Week", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="") +
-	theme_bw() +
-	theme(legend.position = "right") +	
-	scale_fill_viridis( option = "inferno", direction = +1, name = "Cases", limits= c(0,NA), trans= "pseudo_log", breaks=10^seq(0,5), 
-											labels = label_number(accuracy = 1,big.mark = ','),
-                      guide = guide_colorbar(direction = "vertical", barheight = unit(50, units = "mm"), barwidth = unit(3, units = "mm"),
-                                             draw.ulim = F, title.position = 'top', title.vjust = 0.5, label.vjust = 0.5))
 
-```
 
 ### Heat map: Deaths per Day
 
@@ -597,6 +623,24 @@ USStates.Covid19.all %>%
 
 ```
 
+###  New Deaths per Day, normalized to peak, all states
+
+```{r,fig.width=18, fig.height=13}
+USStates.Covid19.all %>%  
+	filter(Metric == "Deaths", Metric2 == 'delta', val >= 0) %>%
+	group_by(STNAME) %>%
+	mutate(rval=val/max(val)) %>%
+  {	ggplot(data=., aes(x=Date, y=rval)) +
+    geom_point(shape=1, size=2) + 
+	  geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
+    geom_label_repel(data=filter(., Date==max(Date) | val==max(val)), aes(label = val), nudge_x=2) +
+	  scale_x_date(limits=c(date("2020-3-1"),NA)) +
+	  #scale_y_log10(limits=c(10,NA), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+	  labs(title="New Deaths per day", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
+	  theme_bw() +
+  	facet_wrap(vars(STNAME), ncol=7)
+	}
+```
 todo
 - sort per total number of deaths
 - states with 2 weeks of lower than 10/day new encounters

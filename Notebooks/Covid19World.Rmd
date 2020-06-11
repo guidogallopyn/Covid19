@@ -330,6 +330,25 @@ df25 %>% filter(Metric == 'Confirmed') %>%
 	add_header_above(c(as.character(date()), "New Cases per week" = 4))
 ```
 
+```{r,fig.width=13}
+####################################################################
+# Table: confirmed cases per capita
+####################################################################
+
+df50 %>% filter(Metric == 'Confirmed') %>% 
+	group_by(`Country/Region`) %>%
+	arrange(Date) %>%
+	mutate(NewCases = Cap-lag(Cap, 7, default=0)) %>%
+	summarize(Peak=Date[which.max(NewCases)]-3, Max=max(NewCases), Last=last(NewCases), Inc=Last / Max-1) %>%
+	mutate(Decrease=cell_spec(percent(-Inc,accuracy=0.1),'html', color='white', background= ifelse(Inc < -0.5,"green", ifelse(Inc < -0.1, "black", "red")))) %>% 
+	arrange(desc(Last)) %>% 
+	mutate_at(vars(Max,Last), funs(round(.,1))) %>% 
+	select(-Inc) %>%
+	kable(format = "html", escape = F, align = "lcccc") %>% 
+	kable_styling(fixed_thead = T, bootstrap_options = c("striped", "hover","condensed")) %>%
+	column_spec(1, bold = T, border_right = T) %>%
+	add_header_above(c(as.character(date()), "New Cases per Capita (100k) per week" = 4))
+```
 
 
 ```{r,fig.width=13}
@@ -389,7 +408,7 @@ Note: log scale heat map
 
 *Observations*
 
-- few countries have 2 weeks of very low new cases afte their peak: China, Sout Korea, Japan, Switzerland, Austria, Denmark, Israel, Serbia
+- few countries have 2 weeks of very low new cases afte their peak: China, South Korea, Japan, Switzerland, Austria, Denmark, Israel, Serbia
 
 ## Relative Increase in New Confirmed Cases
 
@@ -723,12 +742,12 @@ outcome: 1.79 million cases, and 104k deaths on May 31 2020
 
 - new cases per day trend will reverse and start growing again before end of June (result of early reopenings and protests) 
 
-- Brazil will have 2 million confirmed cases and be very close to USA
+-  By end of June, Brazil will have 2 million confirmed cases and be very close to USA
 
 outcome: 
 
 
-References
+#References
 
 
 * R0 estimation https://bmcmedinformdecismak.biomedcentral.com/articles/10.1186/1472-6947-12-147
