@@ -176,12 +176,17 @@ USCensus %>%
 # - map.county: geo County maps with FIPS code for joining purpose
 # Note: some census units are not on map
 ###############################################################################################
+# see https://en.wikipedia.org/wiki/Centroid polygon
+
+Area <- function(long,lat) sum(long*lead(lat,default=first(lat)) - lead(long,default=first(long))*lat) / 2
+CentroidLong <- function(long,lat) sum((long + lead(long, default=first(long))) * (long*lead(lat,default=first(lat)) - lead(long,default=first(long))*lat)) / Area(long,lat) / 6
+CentroidLat <- function(long,lat) sum((lat + lead(lat, default=first(lat))) * (long*lead(lat,default=first(lat)) - lead(long,default=first(long))*lat)) / Area(long,lat) / 6
 
 state_path <- file.path("~","DataScience","Covid19","data","MapLinkState.csv")
 if (!file.exists(state_path)) {
   map_data("state") %>% # note Hawaii and Alaska are not included
 	  group_by(region) %>% 
-	  summarise(Long=mean(long), Lat=mean(lat)) %>%
+	  summarise(Long=CentroidLong(long,lat), Lat=CentroidLat(long, lat)) %>% # use centroid 
     left_join(transmute(USStates.Census, region=tolower(STNAME), STATE),by="region") %>%
   	write_csv(state_path)
 }
@@ -201,7 +206,7 @@ if (!file.exists(county_path)) {
   require(reclin)
 
   pair_blocking(transmute(USCounties.Census, FIPS, STATE, region=tolower(STNAME), subregion=tolower(CTYNAME)), 
-	  						group_by(map.county, STATE, region, subregion) %>% summarise(Long=mean(long), Lat=mean(lat)), 
+	  						group_by(map.county, STATE, region, subregion) %>% summarise(Long=CentroidLong(long,lat), Lat=CentroidLat(long, lat)), 
 		  					blocking_var = "STATE", large = FALSE) %>% 
     compare_pairs(by = "subregion", default_comparator = jaro_winkler(0.8), overwrite = TRUE) %>% 
 	  score_problink(., model = problink_em(.), var = "weight") %>% 
@@ -966,7 +971,6 @@ knitr::include_graphics("USAnimation.gif")
 TODO: 
 - CFR evolution 
 - testing data from https://covidtracking.com/data
-- annimation of states. cumm confirmed cases vs cumm deaths see https://covid19.who.int/explorer
 - plot highest cases as in https://covid19.who.int/
 - load 2016 election data: blue, red states, 2016 presidential elecions, Governors
 - oad geo state and county areas, population density
