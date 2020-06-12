@@ -322,13 +322,12 @@ USCounties.JHU 	%>% left_join(USCounties, by="FIPS") %>% ungroup->  USCounties.C
 ####################################################################
 USStates.Covid19 %>%
 	filter(Metric == "Confirmed", Metric2 == 'n') %>% 
-	select(STATE, val, Lat, Long) %>% 
+	select(STATE, USPS, val, Lat, Long) %>% 
 	{
 	left_join(map.state, ., by="STATE") %>% 	
   ggplot(aes(x = long, y = lat)) +
   geom_polygon(aes(group = group, fill=val), colour = "white") +
-	geom_text(data=filter(USStates, !STNAME %in% c("Alaska","Hawaii")), aes(label=STNAME, x = Long, y = Lat), size=3, colour = "black", hjust=.5) +
-	geom_text(data=., aes(label=ks(val,acc=0.1), x = Long, y = Lat), size=3, colour = "black", vjust=2) +
+	geom_label_repel(data=., aes(label=paste(USPS,":", ks(val,acc=0.1)), x = Long, y = Lat), size=3, colour = "black", hjust=.5) +			
   geom_point(data=data.frame(lat=42.8126, long=-70.8773), size=4, shape=1, color='red') +
 	theme_map() + 
 	coord_map() +
@@ -352,13 +351,12 @@ todo: fix north dakota: delta seems to be -35
 ####################################################################
 USStates.Covid19 %>%
 	filter(Metric == "Confirmed", Metric2 == 'delta') %>% 
-	select(STATE, val,Long, Lat) %>%
+	select(STATE, USPS, val,Long, Lat) %>%
 	{
 	left_join(map.state, ., by="STATE") %>% 
   ggplot(aes(x = long, y = lat)) +
   geom_polygon(aes(group = group, fill=val), colour = "white") +
-	geom_text(data=filter(USStates, !STNAME %in% c("Alaska","Hawaii")), aes(label=STNAME, x = Long, y = Lat), size=3, colour = "green", hjust=.5) +
-	geom_text(data=., aes(label=val, x = Long, y = Lat), size=3, colour = "green", vjust=2) +
+	geom_label_repel(data=., aes(label=paste(USPS,":", val), x = Long, y = Lat), size=3, colour = "black") +	
   geom_point(data=data.frame(lat=42.8126, long=-70.8773), size=4, shape=1, color='red') +
 	theme_map() + 
 	coord_map() +
@@ -381,14 +379,13 @@ USStates.Covid19 %>%
 ####################################################################
 USStates.Covid19 %>%
 	filter(Metric == "Confirmed", Metric2 == 'delta14') %>% 
-	select(STATE, val, Lat, Long) %>%
+	select(STATE, USPS, val, Lat, Long) %>%
 	{
 	left_join(map.state, ., by="STATE") %>% 
   ggplot(aes(x = long, y = lat)) +
   geom_polygon(aes(group = group, fill=val), colour = "white") +
-	geom_text(data=filter(USStates, !STNAME %in% c("Alaska","Hawaii")), aes(label=STNAME, x = Long, y = Lat), size=3, colour = "darkgreen", hjust=.5) +
-	geom_text(data=., aes(label=val, x = Long, y = Lat), size=3, colour = "darkgreen", vjust=2) +
-  geom_point(data=data.frame(lat=42.8126, long=-70.8773), size=4, shape=1, color='red') +
+	geom_label_repel(data=., aes(label=paste(USPS,":", val), x = Long, y = Lat), size=3, colour = "black") +	
+	geom_point(data=data.frame(lat=42.8126, long=-70.8773), size=4, shape=1, color='red') +
 	theme_map() + 
 	coord_map() +
 	labs(x = NULL, y = NULL, title = "USA Covid-19 New Cases in last 2 weeks", 
@@ -415,11 +412,12 @@ TO DO: fix rel14
 ####################################################################
 USStates.Covid19 %>%
 	filter(Metric == "Confirmed", Metric2 == 'rel14') %>%
-	select(STATE, val) %>%
+	select(STATE, USPS, val, Long, Lat) %>%
+	{
 	left_join(map.state, ., by="STATE") %>% 
   ggplot(aes(x = long, y = lat)) +
   geom_polygon(aes(group = group, fill=val), colour = "white") +
-	geom_text(data=filter(USStates, !STNAME %in% c("Alaska","Hawaii")), aes(label=STNAME, x = Long, y = Lat), size=3, colour = "black", hjust=.5) +
+	geom_label_repel(data=., aes(label=paste(USPS,":", percent(val,acc=1)), x = Long, y = Lat), size=3, colour = "black") +	
   geom_point(data=data.frame(lat=42.8126, long=-70.8773), size=4, shape=1, color='red') +
 	theme_map() + 
 	coord_map() +
@@ -431,7 +429,11 @@ USStates.Covid19 %>%
 											name = "Increase", labels = label_percent(accuracy = 1), limits=c(-1,1), oob=squish, 
                       guide = guide_colorbar(direction = "vertical", barheight = unit(50, units = "mm"), barwidth = unit(3, units = "mm"),
                                              draw.ulim = F, title.position = 'top', title.vjust = 0.5, label.vjust = 0.5))
+	}	
 ```
+
+TODO x-y scatterplot with New confirmed cases per week (or 2 weeks) and relative increase
+
 
 ### Heat map New Cases per 2 Weeks relative to state maximum 
 
@@ -469,6 +471,7 @@ Observations
 - peaks start as early as first week of April and as late as current date
 - there are two peak states: Nevada, Alaska, Florida, West Verginia, New Mexico, Kentucky, Tennesee, Oregon (3 peaks)
 
+TODO per capita heatmap
 
 ### Top N States Confirmed Cases
 
@@ -793,6 +796,7 @@ USCounties.Covid19.all %>%
 USCounties.Covid19.all %>% 
 	filter(Metric == "Confirmed", Metric2 == 'delta') %>% 
   filter(., UID %in% topn(.,25), val > 9) %>%
+	group_by(Province_State) %>%
 	{
 	ggplot(data=.,aes(x=Date, y=val, group=FIPS, colour=USPS)) +
   geom_point(shape=1, size=3) + 
@@ -973,7 +977,7 @@ TODO:
 - testing data from https://covidtracking.com/data
 - plot highest cases as in https://covid19.who.int/
 - load 2016 election data: blue, red states, 2016 presidential elecions, Governors
-- oad geo state and county areas, population density
+- add geo state and county areas, population density
 - investigate correlation with state and county popuulation sensity
 - Covid and politics load sstate and county 2016 election results: red, vs blue and margin
 - investigate correlation with state and county election results

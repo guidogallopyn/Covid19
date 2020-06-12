@@ -546,7 +546,7 @@ df25 %>%
 	ggplot(., aes(x=Date, y=Cap)) +
   geom_point(shape=1, size=2) + 
 	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
-	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(`Country/Region`, round(Cap,1), sep=',')), nudge_x=2) +
+	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(`Country/Region`, round(Cap,0), sep=',')), nudge_x=2) +
 	scale_x_date() +
 	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
                 labels = trans_format("log10", math_format(10^.x))) +
@@ -707,9 +707,9 @@ df25 %>%
 	select(Date, Metric, `Country/Region`,  n, PopTotal) %>% 
 	spread(Metric,n) %>% 
 	group_by(`Country/Region`) %>%
-	summarise(DConfirmed = last(Confirmed)-nth(Confirmed,-2), DDeaths = last(Deaths)-nth(Deaths,-2), g=last(Deaths)/nth(Deaths,-14), Confirmed=last(Confirmed), Deaths = last(Deaths)) %>% 
+	summarise(DConfirmed = last(Confirmed)-nth(Confirmed,-2), DDeaths = last(Deaths)-nth(Deaths,-2), g=last(Deaths)/nth(Deaths,-28), Confirmed=last(Confirmed), Deaths = last(Deaths)) %>% 
 	mutate(CFR = 100 * Deaths / Confirmed, DGrowth = DDeaths/Deaths, EstInfect = round(g*Deaths / 0.015), IFR = 100 * Deaths/EstInfect, UnderEst=round(EstInfect/Confirmed,1) ) %>%
-	arrange(desc(DDeaths)) %>%
+	arrange(desc(EstInfect)) %>%
 	select(-g) %>%
 	kable() %>% kable_styling()
 ```
