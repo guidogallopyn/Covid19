@@ -315,7 +315,7 @@ USCounties.JHU 	%>% left_join(USCounties, by="FIPS") %>% ungroup->  USCounties.C
 ## Per State
 
 ### Confirmed Cases US State Map
-
+todo add USA total
 ```{r,fig.width=13}
 ####################################################################
 # Confirmed Cases US Map
