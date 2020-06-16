@@ -302,7 +302,7 @@ df25 %>% filter(Metric == 'Confirmed') %>%
 
 *Observations*
 
-- China reports cases as of late January, has a maximuum of 15k cases/day first week of February but reduces new cases drastically to 1k/day end February and further to 100 cases/day in March. April and May
+- China reports cases as of late January, has a maximum of 15k cases/day first week of February but reduces new cases drastically to 1k/day end February and further to 100 cases/day in March. April and May
 
 - Countries that have significantly reduced new cases after a maximum are Belgium (92%), Canada(71%), France, Germany, Italy, Netherlands, Spain, Turkey, UK
 
