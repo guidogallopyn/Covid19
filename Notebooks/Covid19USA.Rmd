@@ -29,6 +29,7 @@ if(!require(viridis)) {
   install.packages("viridis", repos="http://cloud.r-project.org")
   require(viridis)
 }
+require(knitr)
 require(mapproj)
 require(gganimate)
 library(gifski)
@@ -42,7 +43,9 @@ print.gif_image <- function(x, ...) knitr::include_graphics(x, ...) # Bug fix in
 
 setwd(tempdir())
 
+ns <- function (x, acc=1) number_format(accuracy = acc, scale = 1, suffix = "", big.mark = ",")(x)
 ks <- function (x, acc=1) number_format(accuracy = acc, scale = 1/1000, suffix = "k", big.mark = ",")(x)
+Ms <- function (x, acc=1) number_format(accuracy = acc, scale = 1/1000000, suffix = "M", big.mark = ",")(x)
 
 theme_map <- function(...) {
 	theme_minimal() +
@@ -82,6 +85,15 @@ Distance <- function(lat1,lon1,lat2,lon2){
 
 # Data Loading
 
+The data for this analysis is from
+
+- Johns Hopkins University Covid-19 data https://github.com/CSSEGISandData/COVID-19
+
+- USPS State abriviations and fips codes
+
+- USA Census data https://www2.census.gov/programs-surveys/popest/datasets/2010-2019/counties/totals/co-est2019-alldata.csv
+
+
 ```{r, message=FALSE}
 ####################################################################
 # Johns Hopkins University Covid19 data on github: USA time series data
@@ -110,6 +122,7 @@ content(req)$tree %>%
 	#mutate_each(funs(as.factor), Metric,UID,iso2,iso3,code3,FIPS, Admin2, Province_State, Country_Region) -> df
 
 ```
+
 Note
 - there are no FIPS codes for some census designated places
  mitigation : provide population hard-coded from wikipedia?
@@ -331,6 +344,7 @@ USStates.Covid19 %>%
   geom_point(data=data.frame(lat=42.8126, long=-70.8773), size=4, shape=1, color='red') +
 	theme_map() + 
 	coord_map() +
+	geom_label(data=data.frame(lat=48, long=-80), label=paste("US Total = ", Ms(sum(.$val),acc=0.01)), color="black", size=5, fontface="bold") +	
 	labs(x = NULL, y = NULL, title = "USA Covid-19 Confirmed Cases per US State", 
          subtitle = paste('Date :', max(USStates.Covid19.all$Date)), 
          caption = "Geometries: ggplot2 maps; Covid-19 Data: JHU CSSE") +
@@ -356,10 +370,11 @@ USStates.Covid19 %>%
 	left_join(map.state, ., by="STATE") %>% 
   ggplot(aes(x = long, y = lat)) +
   geom_polygon(aes(group = group, fill=val), colour = "white") +
-	geom_label_repel(data=., aes(label=paste(USPS,":", val), x = Long, y = Lat), size=3, colour = "black") +	
+	geom_label_repel(data=., aes(label=paste(USPS,":", ns(val)), x = Long, y = Lat), size=3, colour = "black") +	
   geom_point(data=data.frame(lat=42.8126, long=-70.8773), size=4, shape=1, color='red') +
 	theme_map() + 
 	coord_map() +
+	geom_label(data=data.frame(lat=48, long=-80), label=paste("US Total = ", ks(sum(.$val),acc=0.1)), color="black", size=5, fontface="bold") +	
 	labs(x = NULL, y = NULL, title = "USA Covid-19 New Cases on Date", 
          subtitle = paste('Date :', max(USStates.Covid19.all$Date)), 
          caption = "Geometries: ggplot2 maps; Covid-19 Data: JHU CSSE") +
@@ -384,10 +399,11 @@ USStates.Covid19 %>%
 	left_join(map.state, ., by="STATE") %>% 
   ggplot(aes(x = long, y = lat)) +
   geom_polygon(aes(group = group, fill=val), colour = "white") +
-	geom_label_repel(data=., aes(label=paste(USPS,":", val), x = Long, y = Lat), size=3, colour = "black") +	
+	geom_label_repel(data=., aes(label=paste(USPS,":", ns(val)), x = Long, y = Lat), size=3, colour = "black") +	
 	geom_point(data=data.frame(lat=42.8126, long=-70.8773), size=4, shape=1, color='red') +
 	theme_map() + 
 	coord_map() +
+	geom_label(data=data.frame(lat=48, long=-80), label=paste("US Total = ", ks(sum(.$val),acc=0.1)), color="black", size=5, fontface="bold") +			
 	labs(x = NULL, y = NULL, title = "USA Covid-19 New Cases in last 2 weeks", 
          subtitle = paste('Date :', max(USStates.Covid19.all$Date)), 
          caption = "Geometries: ggplot2 maps; Covid-19 Data: JHU CSSE") +
@@ -410,6 +426,14 @@ TO DO: fix rel14
 ####################################################################
 #  US State Map: Increase in New Cases in the last 2 weeks
 ####################################################################
+
+USStates.Covid19.all %>% 
+	filter(Metric == "Confirmed", Metric2 == 'delta14') %>%
+	group_by(Date) %>% 
+	summarise(val=sum(val)) %>%
+  mutate(rel14 = last(val / lag(val, 14)-1)) %>%
+	summarise(val=last(rel14)) %>% pull(val) -> US
+
 USStates.Covid19 %>%
 	filter(Metric == "Confirmed", Metric2 == 'rel14') %>%
 	select(STATE, USPS, val, Long, Lat) %>%
@@ -421,6 +445,7 @@ USStates.Covid19 %>%
   geom_point(data=data.frame(lat=42.8126, long=-70.8773), size=4, shape=1, color='red') +
 	theme_map() + 
 	coord_map() +
+	geom_label(data=data.frame(lat=48, long=-80), label=paste("US Total = ", percent(US,acc=0.1)), color="black", size=5, fontface="bold") +	
 	labs(title = "USA Covid-19 Increase in New Cases in last 2 weeks", 
          subtitle = paste('Date :', max(USStates.Covid19.all$Date)), 
          caption = "Geometries: ggplot2 maps; Covid-19 Data: JHU CSSE") +
@@ -902,52 +927,24 @@ if(wday(today(), label=TRUE) == "Sat") { # this takes hours to compute, only do 
 ```
 
 
-#### Total Confirmed Cases
+### USA Animated county maps
 
-BUG include_graphics only works in Rstudio, rndred dcs do not include the gif files in html 
+![Total Confirmed Cases](USMap_Confirmed_n_FALSE.gif)
 
-```{r, warning=FALSE, fig.width=21, message=FALSE}
-knitr::include_graphics(file.path(".","USMap_Confirmed_n_FALSE.gif"))
-```
+![Total Confirmed Cases per Capita(100k)](USMap_Confirmed_n_TRUE.gif)
 
-#### Total Confirmed Cases per Capita
+![Weekly Cases](USMap_Confirmed_delta7_FALSE.gif)
 
-```{r, warning=FALSE, fig.width=21, message=FALSE}
-knitr::include_graphics("USMap_Confirmed_n_TRUE.gif")
-```
+![Weekly Cases per Capita(100k)](USMap_Confirmed_delta7_TRUE.gif)
 
-#### New Confirmed Cases per week
 
-```{r, warning=FALSE, fig.width=21, message=FALSE}
-knitr::include_graphics("USMap_Confirmed_delta7_FALSE.gif")
-```
+![Total Deaths](USMap_Deaths_n_FALSE.gif)
 
-#### New Confirmed Cases per week per Capita
+![Total Deaths per Capita(100k)](USMap_Deaths_n_TRUE.gif)
 
-```{r, warning=FALSE, fig.width=21, message=FALSE}
-knitr::include_graphics("USMap_Confirmed_delta7_TRUE.gif")
-```
+![Total Weekly Deaths](USMap_Deaths_delta7_FALSE.gif)
 
-#### Total Deaths 
-```{r, warning=FALSE, fig.width=21, message=FALSE}
-knitr::include_graphics("USMap_Deaths_n_FALSE.gif")
-```
-
-#### Total Deaths per Capita
-```{r, warning=FALSE, fig.width=21, message=FALSE}
-knitr::include_graphics("USMap_Deaths_n_TRUE.gif")
-```
-
-#### Total Deaths per week
-```{r, warning=FALSE, fig.width=21, message=FALSE}
-knitr::include_graphics("USMap_Deaths_delta7_FALSE.gif")
-```
-
-#### Total Deaths per week per Capita
-```{r, warning=FALSE, fig.width=21, message=FALSE}
-knitr::include_graphics("USMap_Deaths_delta7_TRUE.gif")
-```
-
+![Total Weekly Deaths per Capita(100k)](USMap_Deaths_delta7_TRUE.gif)
 
 ```{r, warning=FALSE, fig.width=21, message=FALSE}
 ####################################################################
@@ -971,10 +968,8 @@ USStates.Covid19.all %>%
 }	
 ```
 
-```{r, warning=FALSE, fig.width=21, message=FALSE}
-knitr::include_graphics("USAnimation.gif")
-```
 
+![Cases and deaths over time animation](USAnimation.gif)
 TODO: 
 - CFR evolution 
 - testing data from https://covidtracking.com/data

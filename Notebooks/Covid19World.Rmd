@@ -696,9 +696,7 @@ df50 %>%
 }	
 ```
 
-```{r, warning=FALSE, fig.width=21, message=FALSE}
-knitr::include_graphics("WorldAnimation.gif")
-```
+![Cases and deaths over time animation](WorldAnimation.gif)
 
 
 ```{r}
