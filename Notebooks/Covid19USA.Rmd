@@ -903,8 +903,11 @@ if(wday(today(), label=TRUE) == "Sat") { # this takes hours to compute, only do 
 
 
 #### Total Confirmed Cases
+
+BUG include_graphics only works in Rstudio, rndred dcs do not include the gif files in html 
+
 ```{r, warning=FALSE, fig.width=21, message=FALSE}
-knitr::include_graphics("USMap_Confirmed_n_FALSE.gif")
+knitr::include_graphics(file.path(".","USMap_Confirmed_n_FALSE.gif"))
 ```
 
 #### Total Confirmed Cases per Capita
