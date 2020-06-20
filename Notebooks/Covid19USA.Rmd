@@ -929,25 +929,6 @@ if(wday(today(), label=TRUE) == "Sat") { # this takes hours to compute, only do 
 
 ### USA Animated county maps
 
-!!![Total Confirmed Cases](https://github.com/guidogallopyn/Covid19/raw/master/Notebooks/USMap_Confirmed_n_FALSE.gif)
-
-!![Total Confirmed Cases per capita](USMap_Confirmed_n_FALSE.gif)
-
-!![Total Confirmed Cases per capita](USMap_Confirmed_n_TRUE.gif)
-
-!![Weekly Cases](USMap_Confirmed_delta7_FALSE.gif)
-
-!![Weekly Cases per Capita(100k)](USMap_Confirmed_delta7_TRUE.gif)
-
-
-!![Total Deaths](USMap_Deaths_n_FALSE.gif)
-
-!![Total Deaths per Capita(100k)](USMap_Deaths_n_TRUE.gif)
-
-!![Total Weekly Deaths](USMap_Deaths_delta7_FALSE.gif)
-
-!![Total Weekly Deaths per Capita(100k)](USMap_Deaths_delta7_TRUE.gif)
-
 #### Total Confirmed Cases
 
 BUG include_graphics only works in Rstudio, rndred dcs do not include the gif files in html 
@@ -955,44 +936,52 @@ BUG include_graphics only works in Rstudio, rndred dcs do not include the gif fi
 ```{r, fig.width=21}
 knitr::include_graphics(file.path(".","USMap_Confirmed_n_FALSE.gif"))
 ```
+!![Total Confirmed Cases per capita](USMap_Confirmed_n_FALSE.gif)
 
 #### Total Confirmed Cases per Capita
 
 ```{r, fig.width=21}
 knitr::include_graphics("USMap_Confirmed_n_TRUE.gif")
 ```
+!![Total Confirmed Cases per capita](USMap_Confirmed_n_TRUE.gif)
 
 #### New Confirmed Cases per week
 
 ```{r, fig.width=21}
 knitr::include_graphics("USMap_Confirmed_delta7_FALSE.gif")
 ```
+!![Weekly Cases](USMap_Confirmed_delta7_FALSE.gif)
 
 #### New Confirmed Cases per week per Capita
 
 ```{r, fig.width=21}
 knitr::include_graphics("USMap_Confirmed_delta7_TRUE.gif")
 ```
+!![Weekly Cases per Capita(100k)](USMap_Confirmed_delta7_TRUE.gif)
 
 #### Total Deaths 
 ```{r, fig.width=21}
 knitr::include_graphics("USMap_Deaths_n_FALSE.gif")
 ```
+!![Total Deaths](USMap_Deaths_n_FALSE.gif)
 
 #### Total Deaths per Capita
 ```{r, fig.width=21}
 knitr::include_graphics("USMap_Deaths_n_TRUE.gif")
 ```
+!![Total Deaths per Capita(100k)](USMap_Deaths_n_TRUE.gif)
 
 #### Total Deaths per week
 ```{r, fig.width=21}
 knitr::include_graphics("USMap_Deaths_delta7_FALSE.gif")
 ```
+!![Total Weekly Deaths](USMap_Deaths_delta7_FALSE.gif)
 
 #### Total Deaths per week per Capita
 ```{r, fig.width=21}
 knitr::include_graphics("USMap_Deaths_delta7_TRUE.gif")
 ```
+!![Total Weekly Deaths per Capita(100k)](USMap_Deaths_delta7_TRUE.gif)
 
 ```{r, warning=FALSE, fig.width=21, message=FALSE}
 ####################################################################
@@ -1017,10 +1006,11 @@ USStates.Covid19.all %>%
 ```
 
 
-!![Cases and deaths over time animation](USAnimation.gif)
+
 ```{r, fig.width=21}
 knitr::include_graphics("USAnimation.gif")
 ```
+!![Cases and deaths over time animation](USAnimation.gif)
 
 TODO: 
 
