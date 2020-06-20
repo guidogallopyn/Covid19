@@ -1,5 +1,5 @@
 ---
-title: "Covid-19 USA Time series"
+title: "Covid-19 USA Data Analysis"
 output: html_notebook
 ---
 
