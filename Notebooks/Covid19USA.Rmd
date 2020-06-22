@@ -917,7 +917,7 @@ AnimateCountyMap <- function (giffile, m1="Confirmed", m2='n', pc=FALSE) {
 	anim_save(giffile, animation = .)
 }	
 
-if(wday(today(), label=TRUE) == "Sat") { # this takes hours to compute, only do this once a week on Saturday
+if(wday(today(), label=TRUE) == "Sun") { # this takes hours to compute, only do this once a week on Saturday
 	# generate county animations
   data.frame(pc=c(FALSE,TRUE), m1=c("Confirmed",'Deaths'), m2=c('n','delta7')) %>% 
 		expand(m1,m2, pc)  %>% 
@@ -987,7 +987,7 @@ knitr::include_graphics("USMap_Deaths_delta7_TRUE.gif")
 ####################################################################
 # Animation
 ####################################################################
-if(wday(today(),label=TRUE) == "Sat") { # takes hours, only do this once a week and save
+if(wday(today(),label=TRUE) == "Sun") { # takes hours, only do this once a week and save
 USStates.Covid19.all %>%
   filter(Metric %in% c("Confirmed","Deaths"), Metric2 == "n") %>% 
 	pivot_wider(names_from=c("Metric"), values_from = "val") %>% 
