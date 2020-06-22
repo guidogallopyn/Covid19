@@ -47,6 +47,7 @@ The data for this analysis is from
 
 - United Nation World Population Prospects 2019 https://population.un.org/wpp/Download/Standard/CSV/
 
+- UN standard country or areaz codes for statistical use (M49 ) https://unstats.un.org/unsd/methodology/m49/overview/
 
 ```{r, message=FALSE}
 ####################################################################
@@ -83,6 +84,8 @@ content(req)$tree %>%
 ##################################
 # Population data from United Nations
 ##################################
+# EU countries: https://www.schengenvisainfo.com/eu-countries/
+EU <- c("Austria", "Belgium", "Bulgaria", "Croatia", "Cyprus", "Czechia", "Denmark", "Estonia", "Finland", "France", "Germany", "Greece", "Hungary", "Ireland", "Italy", "Latvia", "Lithuania", "Luxembourg", "Malta", "Netherlands", "Poland", "Portugal", "Romania", "Slovakia", "Slovenia", "Spain", "Sweden")
 
 population_path <- file.path("~","DataScience","Covid19","data","population.csv")
 if (!file.exists(population_path)) {
@@ -91,10 +94,13 @@ if (!file.exists(population_path)) {
 	filter(Time==2020, Variant=='Medium', LocID < 900)%>% 
 	select(-VarID,-Variant,-MidPeriod,-Time) %>% 
 	mutate_at(c("PopMale","PopFemale","PopTotal","PopDensity"), function(x) as.integer(x*1000)) %>%
+  mutate(inEU = Location %in% EU) %>%  	
 	write_csv(population_path)
 } 
 read_csv(population_path) -> population
 ```
+
+
 
 Data is aggregated per country, eg provinces are added to a total per country, and cases and deaths per capita are derived
 
@@ -144,6 +150,9 @@ Countries %>%	top_n(25, wt=n) %>% pull(`Country/Region`) -> top25
 Countries %>%	top_n(50, wt=n) %>% pull(`Country/Region`) -> top50
 df2 %>% filter(`Country/Region` %in% top25) -> df25
 df2 %>% filter(`Country/Region` %in% top50) -> df50
+
+df2 %>% filter(inEU | `Country/Region` == 'US' ) %>%
+	mutate(Region = if_else(inEU,"EU","US")) -> dfUSEU
 ```
 
 
@@ -231,6 +240,27 @@ df25 %>% filter(Metric== 'Confirmed', n > 50) %>%
 
 - Mid of March is outbreak  South America (Mexico, Peru, Chile, Ecuador) and Asia Middle east and India/Pakistan
 
+
+```{r,fig.width=13}
+####################################################################
+# Graphical Exploration Confirmed Cases per Day US vs EU
+####################################################################
+dfUSEU %>% filter(Metric== 'Confirmed') %>% 
+  group_by(Date, Region) %>%
+	summarise(n=sum(n)) %>%
+	group_by(Region) %>%
+	arrange(n) %>%
+	mutate(NewCases = n-lag(n, default=0)) %>%
+	{
+	ggplot(.,aes(x=Date, y=NewCases, colour=Region)) +
+  geom_point(shape=1, size=3) + 
+	geom_smooth(formula ='y ~ x',method = 'loess', span=0.30, se=FALSE) +
+	#geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(`inEU`,ks(n),sep=',')), nudge_x=0.7) +
+	scale_x_date() +
+	labs(title="New Cases per Day US vs EU", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="New Cases") +
+	theme_bw() 
+	}		
+```
 
 ## Confirmed Cases for top 25 countries
 
