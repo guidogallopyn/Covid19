@@ -101,6 +101,7 @@ read_csv(population_path) -> population
 ```
 
 
+# Data Wrangeling
 
 Data is aggregated per country, eg provinces are added to a total per country, and cases and deaths per capita are derived
 
@@ -138,7 +139,8 @@ left_join(df1, select(LinkTable, Location.x, JHUID, LocID), by=c("Country/Region
 
 ```
 
-The top 25 and top 50 counties are determined based on present confirmed cases
+The top 25 and top 50 counties are determined based on confirmed cases.
+Aggregation for EU and US
 
 ```{r}
 ####################################################################
@@ -152,7 +154,9 @@ df2 %>% filter(`Country/Region` %in% top25) -> df25
 df2 %>% filter(`Country/Region` %in% top50) -> df50
 
 df2 %>% filter(inEU | `Country/Region` == 'US' ) %>%
-	mutate(Region = if_else(inEU,"EU","US")) -> dfUSEU
+	mutate(Region = if_else(inEU,"EU","US")) %>%
+  group_by(Metric, Date, Region) %>%
+	summarise(n=sum(n), PopTotal=sum(PopTotal)) %>% ungroup -> dfUSEU
 ```
 
 
@@ -241,15 +245,13 @@ df25 %>% filter(Metric== 'Confirmed', n > 50) %>%
 - Mid of March is outbreak  South America (Mexico, Peru, Chile, Ecuador) and Asia Middle east and India/Pakistan
 
 
-```{r,fig.width=13}
+```{r}
 ####################################################################
 # Graphical Exploration Confirmed Cases per Day US vs EU
 ####################################################################
 dfUSEU %>% filter(Metric== 'Confirmed') %>% 
-  group_by(Date, Region) %>%
-	summarise(n=sum(n)) %>%
 	group_by(Region) %>%
-	arrange(n) %>%
+	arrange(Date) %>%
 	mutate(NewCases = n-lag(n, default=0)) %>%
 	{
 	ggplot(.,aes(x=Date, y=NewCases, colour=Region)) +
@@ -257,7 +259,7 @@ dfUSEU %>% filter(Metric== 'Confirmed') %>%
 	geom_smooth(formula ='y ~ x',method = 'loess', span=0.30, se=FALSE) +
 	#geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(`inEU`,ks(n),sep=',')), nudge_x=0.7) +
 	scale_x_date() +
-	labs(title="New Cases per Day US vs EU", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="New Cases") +
+	labs(title="New Cases per Day: US vs EU", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="New Cases") +
 	theme_bw() 
 	}		
 ```
