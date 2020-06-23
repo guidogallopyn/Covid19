@@ -765,7 +765,7 @@ df25 %>%
 
 - By end of May, US will have 1.5 million confirmed cases and 100k deaths
 
-outcome: 1.79 million cases, and 104k deaths on May 31 2020
+outcome: on May 31 2020 1.79 million cases, and 104k deaths 
 
 ## June 1st, 2020
 
@@ -775,7 +775,7 @@ outcome: 1.79 million cases, and 104k deaths on May 31 2020
 
 - By end of June, Brazil will have 2 million confirmed cases and be very close to USA
 
-outcome: on June 30
+outcome: on June 23, 2.3 million cases, 120k deaths, new cases in US is back to 30k/day (up from ~20k/day), brazil has 1.1 million cases, increasing 30k/day 
 
 
 #References
