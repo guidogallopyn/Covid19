@@ -416,6 +416,8 @@ USStates.Covid19 %>%
 
 
 
+
+
 ###  US State Map: Increase in New Cases in the last 2 weeks
 
 need different color scale: green is negative increase, red is positive increase, black is neutral
@@ -457,8 +459,26 @@ USStates.Covid19 %>%
 	}	
 ```
 
-TODO x-y scatterplot with New confirmed cases per week (or 2 weeks) and relative increase
 
+
+```{r, warning=FALSE}
+####################################################################
+# New Cases vs increase in new cases in the last 2 weeks 
+####################################################################
+
+USStates.Covid19 %>%
+	filter(Metric == "Confirmed", Metric2 %in% c('delta14', 'rel14')) %>% 
+	pivot_wider(names_from=c("Metric2"), values_from="val") %>% 
+  ggplot(aes(x =delta14 , y = rel14)) +
+  geom_point(aes(size= POPESTIMATE2019, color= USPS ), shape=1) +
+	geom_text_repel(aes(label = USPS, color= USPS)) +
+  scale_x_log10(limits=c(10,NA), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+	scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+	labs(title="New Cases and Acceleration", subtitle = paste("Covid19 pandemic","-",date()), x="New cases in 2 weeks", y="Relative Increase (%)") +
+	theme_bw() + theme(legend.position = "none")
+
+```
+TODO this would make a nice animation over time
 
 ### Heat map New Cases per 2 Weeks relative to state maximum 
 
