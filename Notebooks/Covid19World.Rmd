@@ -780,7 +780,7 @@ outcome: on May 31 2020 1.79 million cases, and 104k deaths
 outcome: on June 23, 2.3 million cases, 120k deaths, new cases in US is back to 30k/day (up from ~20k/day), brazil has 1.1 million cases, increasing 30k/day 
 
 
-#References
+# References
 
 
 * R0 estimation https://bmcmedinformdecismak.biomedcentral.com/articles/10.1186/1472-6947-12-147
