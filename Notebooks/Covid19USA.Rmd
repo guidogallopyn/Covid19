@@ -1032,6 +1032,34 @@ knitr::include_graphics("USAnimation.gif")
 ```
 !![Cases and deaths over time animation](USAnimation.gif)
 
+
+```{r, warning=FALSE}
+####################################################################
+# New Cases vs increase in new cases in the last 2 weeks 
+####################################################################
+if(wday(today(),label=TRUE) == "Fri") { # takes hours, only do this once a week and save
+USStates.Covid19.all %>%
+	filter(Metric == "Confirmed", Metric2 %in% c('delta14', 'rel14')) %>% 
+	pivot_wider(names_from=c("Metric2"), values_from="val") %>% 
+  ggplot(aes(x = delta14 , y = rel14)) +
+  geom_point(aes(size= POPESTIMATE2019, color= USPS ), shape=1) +
+  scale_x_log10(limits=c(10,NA), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+	scale_y_continuous(limits=c(-1,3), labels = scales::percent_format(accuracy = 1)) +
+	labs(title="New Cases and Acceleration", subtitle = paste("Covid19 pandemic","-",date()), x="New cases in 2 weeks", y="Relative Increase (%)") +
+	theme_bw() + 
+	transition_time(Date, range=c(date("2020-03-01"),max(USStates.Covid19.all$Date))) +
+  ease_aes('linear') +
+	labs(subtitle = "Date: {frame_time}")	-> p2  
+	animate(p2, width = 1920/2, height = 1080/2, fps=10, duration=20, end_pause=10) %>%
+	anim_save("USAnimation2.gif", animation = .)
+}	
+```
+
+```{r, fig.width=21}
+knitr::include_graphics("USAnimation2.gif")
+```
+!![Cases and deaths over time animation](USAnimation2.gif)
+
 TODO: 
 
 - CFR evolution 
