@@ -561,8 +561,7 @@ USStates.Covid19.all %>%
 	  geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
     geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(USPS,ks(val,0.1),sep=",")), nudge_x=2) +
 	  scale_x_date() +
-	  scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
-                  labels = trans_format("log10", math_format(10^.x))) +
+	  scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
 	  labs(title="New Confirmed Cases for top 25 US States", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
 	  theme_bw() + theme(legend.position = "none")
 	}
@@ -785,6 +784,28 @@ USCounties.Covid19.all %>%
 	}
 ```
 
+```{r,fig.width=13}
+####################################################################
+# Graphical Exploration Confirmed Cases in Counties with close proximity to Newburyport, MA
+####################################################################
+
+
+USCounties.Covid19.all %>% 
+	filter(Metric == "Confirmed", Metric2 == 'n') %>% 
+  filter(FIPS %in% nearNBPT) %>%
+	mutate(val = 10^5 * val / POPESTIMATE2019) %>% 
+	{
+	ggplot(data=.,aes(x=Date, y=val, colour=CTYNAME)) +
+  geom_point(shape=1, size=3) + 
+	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
+	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(CTYNAME, USPS, ns(val),sep=",")), nudge_x=2) +
+	scale_x_date() +
+	#scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+	labs(title="Confirmed Cases per Capita near NBPT", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
+	theme_bw() + theme(legend.position = "none")
+	}
+```
+
 ### New Confirmed Cases in US Counties near Newburyport, MA
 
 ```{r,fig.width=13}
@@ -829,6 +850,28 @@ USCounties.Covid19.all %>%
 	  scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
                   labels = trans_format("log10", math_format(10^.x))) +
 	  labs(title="New Confirmed Cases per Day near NBPT", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases/Day") +
+	  theme_bw() + theme(legend.position = "none")
+	  }
+```
+
+```{r,fig.width=13}
+####################################################################
+# Graphical Exploration New Confirmed Cases per Capita in Counties with close proximity to Newburyport, MA
+####################################################################
+
+USCounties.Covid19.all %>% 
+	filter(Metric == "Confirmed", Metric2 == 'delta') %>% 
+  filter(FIPS %in% nearNBPT, val>0) %>%
+	mutate(val = 10^5 * val / POPESTIMATE2019) %>% 
+	group_by(UID) %>%
+	{
+	ggplot(data=.,aes(x=Date, y=val, colour=CTYNAME)) +
+  geom_point(shape=1, size=3) + 
+	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
+	geom_label_repel(data=filter(., Date==max(Date) | val==max(val)), aes(label = paste(CTYNAME, USPS, round(val,2), sep=",")), nudge_x=2) +
+	scale_x_date() +
+	  #scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+	  labs(title="New Cases / Capita per Day near NBPT", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases/Capita/Day") +
 	  theme_bw() + theme(legend.position = "none")
 	  }
 ```
@@ -940,7 +983,7 @@ AnimateCountyMap <- function (giffile, m1="Confirmed", m2='n', pc=FALSE) {
 	anim_save(giffile, animation = .)
 }	
 
-if(wday(today(), label=TRUE) == "Sun") { # this takes hours to compute, only do this once a week on Saturday
+if(wday(today(), label=TRUE) == "Sun") { # this takes hours to compute, only do this once a week on Sunday
 	# generate county animations
   data.frame(pc=c(FALSE,TRUE), m1=c("Confirmed",'Deaths'), m2=c('n','delta7')) %>% 
 		expand(m1,m2, pc)  %>% 
@@ -954,7 +997,7 @@ if(wday(today(), label=TRUE) == "Sun") { # this takes hours to compute, only do 
 
 #### Total Confirmed Cases
 
-BUG include_graphics only works in Rstudio, rndred dcs do not include the gif files in html 
+BUG include_graphics only works in Rstudio, rendered html does not include the gifs
 
 ```{r, fig.width=21}
 knitr::include_graphics(file.path(".","USMap_Confirmed_n_FALSE.gif"))
