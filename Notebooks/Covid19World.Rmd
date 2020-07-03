@@ -761,7 +761,7 @@ df25 %>%
 	kable() %>% kable_styling()
 ```
 
-# Predictions
+# Guido's Predictions
 
 ## May 1st, 2020
 
@@ -777,8 +777,19 @@ outcome: on May 31 2020 1.79 million cases, and 104k deaths
 
 - By end of June, Brazil will have 2 million confirmed cases and be very close to USA
 
-outcome: on June 23, 2.3 million cases, 120k deaths, new cases in US is back to 30k/day (up from ~20k/day), brazil has 1.1 million cases, increasing 30k/day 
+outcome: on June 30, USA 2.6 million cases, 127k deaths, new cases in US is up to 45k/day (up from ~20k/day), brazil has 1.4 million cases
 
+## July 1st, 2020
+
+- before end of July, US will see 100k new confirmed cases per day, and 2000 deaths per day
+
+- US decline in deaths will reverse by July 15
+
+- US will add 2 million cases in July, reaching 4.7 million, and adding 30k deaths reaching 160k deaths
+
+- Brazil will add 1.5 million cases in July, reaching 3 million
+
+- India will reach 35k cases per day
 
 # References
 
