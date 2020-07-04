@@ -203,12 +203,16 @@ df50 %>% filter(Metric== 'Confirmed', n > 50) %>%
 
 ## Confirmed Cases for top 25 countries
 
+
+The first graph looks at the evolution of the confirmed cases for country from the beginning of the pandemic in middle of January when China started to you report the first cases to July. You see the top 25 countries in the world and how many confirmed cases that have as a beginning of July. 
+
 Note 
 
-- Confirmed cases are highly depending on testing and should not be mistaken with the true number of infected people. Confirmed cases depends on testing, and as Covid-19 testing is problemetic in most countries, confirmed cases is not a good estimate of total infected people.  
+- Confirmed cases are highly depending on testing and should not be mistaken with the true number of infected people. Covid-19 testing is problematic in most countries, confirmed cases is not a good estimate of total infected people.  
 
-- Log scales on y axis may give wrong impression of differences between countries and exponentaial growth after outbreak.
+- As country populations vary widely, a measure of cases per capita i.e per 100k people may give a better impression of the impact of the pandemic in a country.
 
+- Log scales on y axis may give wrong impression of differences between countries and exponentional growth after outbreak.
 
 ```{r,fig.width=13}
 ####################################################################
@@ -238,12 +242,20 @@ df25 %>% filter(Metric== 'Confirmed', n > 50) %>%
 
 - Spain outbreak is beginning of March and reaches 100k cases end of March, curve flattens more than USA (started at same moment)
 
-- West Europe: UK, France, Germany, Belgium and Netherlands all start the first week of March
+- West Europe: UK, France, Germany  all start the first week of March
 
 - Russia and Brazil outbreaks are a week later and fail to flatten their curve
 
-- Mid of March is outbreak  South America (Mexico, Peru, Chile, Ecuador) and Asia Middle east and India/Pakistan
+- Mid of March is outbreak South America (Mexico, Peru, Chile, Ecuador) and Asia Middle east and India/Pakistan/Bangladesh
 
+
+## Comparing US with EU
+
+US and EU are comparable in a number of ways, US has a population of 331 million, EU (27 countries) has a population of 440 million, both are developed and have strong economies. The covid19 outbreak started around the same time in EU as in US (1 week difference)  
+
+Each dot represents the new reported cases for EU (red) and US (cyan) on that day. It is very noisy, and LOESS local regression lines [https://en.wikipedia.org/wiki/Local_regression](https://en.wikipedia.org/wiki/Local_regression) are displayed to show the trends over time. LOESS is supperior compared to running averages that have a lag effect. 
+
+In my opinion, this is the most depressing graph in this analysis as it shows at the same time how we (US) as a country have performed so far in controlling covid19 and what lays ahead of us.
 
 ```{r}
 ####################################################################
@@ -336,11 +348,14 @@ df25 %>% filter(Metric == 'Confirmed') %>%
 
 - China reports cases as of late January, has a maximum of 15k cases/day first week of February but reduces new cases drastically to 1k/day end February and further to 100 cases/day in March. April and May
 
-- Countries that have significantly reduced new cases after a maximum are Belgium (92%), Canada(71%), France, Germany, Italy, Netherlands, Spain, Turkey, UK
+- Countries that have significantly reduced new cases after a maximum areCanada(71%), France, Germany, Italy, Netherlands, Spain, Turkey, UK
 
-- Countries with reduced new cases but still very high Iran, US, Sweden, Russia
+- Countries with reduced new cases but still very high  are Russia Peru
 
-- counties with increasing number of cases per day Brazil, Bangladesh, india, Pakistan Peru, Quator, Mexico, Saudia Arabia 
+- counties with increasing number of cases per day USA, Brazil, Bangladesh, India, Iran, Pakistan, Peru, Quator, Mexico, Saudia Arabi, South Africa, Sweden
+
+
+The table below shows a ranked list of countries with new confirmed cases per week. It shows the new cases in the last week from the date on the upper left, it also shows the maximum cases per week and when that peak happened. In addition it shows the relative decrease in number of weekly cases compared to the peak
 
 ```{r,fig.width=13}
 ####################################################################
@@ -362,6 +377,10 @@ df25 %>% filter(Metric == 'Confirmed') %>%
 	add_header_above(c(as.character(date()), "New Cases per week" = 4))
 ```
 
+
+This second table below shows a ranked list of countries with new confirmed cases per capita per week. as in the previous table, tt shows the new cases in the last week from the date on the upper left, but this time per 100k people. It also shows the maximum cases per capita per week and when that peak happened. In addition it shows the relative decrease in number of weekly cases compared to the peak
+
+
 ```{r,fig.width=13}
 ####################################################################
 # Table: confirmed cases per capita
@@ -382,6 +401,7 @@ df50 %>% filter(Metric == 'Confirmed') %>%
 	add_header_above(c(as.character(date()), "New Cases per Capita (100k) per week" = 4))
 ```
 
+The graph below shows the daily number of Confirmed Cases per country on a linear scale. Each dot again represents the new reported cases for a country on that day. 
 
 ```{r,fig.width=13}
 ####################################################################
@@ -405,6 +425,19 @@ df25 %>% filter(Metric == 'Confirmed') %>%
 ```
 
 # Heath map Daily New Confirmed Cases, top 50 countries
+
+A heatmap is a data visualization technique that shows magnitude of a phenomenon as color in two dimensions. In this analysis well show number of confirmed cases with the inferno color map, againt time (x axis) and country (y axis). Countries on the y axis are ordered accorinf to day of outbreak i.e when they reach 100 cases. 
+This is a log scale heat map
+
+- yellowish white means over 10k new cases per day
+
+- red orange is 1000 cases a day
+
+- dark red is 100 cases a day
+
+- dark purple 10 cases a day
+
+- black is no cases
 
 ```{r,fig.width=13}
 ####################################################################
@@ -431,11 +464,6 @@ df50 %>%
                                              draw.ulim = F, title.position = 'top', title.hjust = 0.5, label.hjust = 0.5))
 	}
 ```
-Note: log scale heat map
-- yellowish white means over 10k new cases per day
-- red orange is 1000 cases a day
-- dark red is 100 cases a day
-- dark purple 10 cases a day
 
 
 *Observations*
@@ -443,6 +471,8 @@ Note: log scale heat map
 - few countries have 2 weeks of very low new cases afte their peak: China, South Korea, Japan, Switzerland, Austria, Denmark, Israel, Serbia
 
 ## Relative Increase in New Confirmed Cases
+
+TODO: need better visulization
 
 ```{r,fig.width=13}
 ####################################################################

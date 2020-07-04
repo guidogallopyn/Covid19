@@ -366,7 +366,7 @@ The following 12 graphs show different dimensions of the covid-19 outbreak in th
 
 - The fifth row shows the covid10 deaths on the date on the graph both in absolute numbers and per capita
 
-- The sixth row shows the covid10 deaths iin the last week both in absolute numbers and per capita
+- The sixth row shows the covid10 deaths in the last week both in absolute numbers and per capita
 
 Labels are work in progress
 
