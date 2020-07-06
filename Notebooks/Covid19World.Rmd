@@ -278,7 +278,7 @@ dfUSEU %>% filter(Metric== 'Confirmed') %>%
 
 ## Confirmed Cases for top 25 countries
 
- Note Log scales on y axis
+Note Log scales on y axis
  
 
 ```{r,fig.width=13}
