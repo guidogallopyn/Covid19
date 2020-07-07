@@ -4,6 +4,7 @@ output: html_notebook
 ---
 
 # Introduction
+(work in progress, not spell checked nor edited for english language)
 
 This is an analysis of USA Covid-19 pandemic data as available from Johns Hopkins University in combination with US Census data on population. 
 
@@ -347,11 +348,32 @@ USCounties.JHU 	%>% left_join(USCounties, by="FIPS") %>% ungroup->  USCounties.C
 
 # Graphical Exploration
 
+## USA total
+
+```{r}
+####################################################################
+#  US State Map: Increase in New Cases in the last 2 weeks
+####################################################################
+
+USStates.Covid19.all %>% 
+		filter(Metric %in% c('Confirmed','Deaths'), Metric2 == 'delta') %>%
+		group_by(Metric, Date) %>% 
+	  summarise_at('val', sum) %>%
+	  ggplot(aes(x=Date, y=val, colour=Metric)) +
+      geom_point(shape=1, size=2) + 
+	    geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
+      scale_x_date() +
+	    scale_y_log10(limits=c(10,10^5),breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+	    labs(title="USA Cases and Deaths per Day", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Count") +
+	    theme_bw() 
+	  
+```
+
 ## Per State
 
 ### US State Heat-Maps
 
-(work in progress)
+
 The following 12 graphs show different dimensions of the covid-19 outbreak in the United States.
 
 - The first graph on the top left shows the number of confirmed cases as of today per state and in total for the entire country. The colors on the map indicate how many confirmed cases per state. White yellow means more than a hundred thousand cases, orange meas ten thousand, red means one thousand.
@@ -405,6 +427,52 @@ expand.grid(pc=c(FALSE,TRUE), m2=c('n','delta','delta7'), m1=c("Confirmed",'Deat
 	{ mapply(PlotStateMap, m1=.$m1, m2=.$m2, pc=.$pc, SIMPLIFY = FALSE) } %>%
   grid.arrange( grobs = ., nrow=6, heights=rep(4,6))
 ```  
+
+
+
+```{r,fig.width=18, fig.asp=.4}
+####################################################################
+#  US State Map: Increase in New Cases in the last 2 weeks
+####################################################################
+
+USHeat <- function(m1) {
+	USStates.Covid19.all %>% 
+		filter(Metric == m1, Metric2 == 'delta14') %>%
+		group_by(Date) %>% 
+		summarise(val=sum(val)) %>%
+		mutate(rel14 = last(val / lag(val, 14)-1)) %>%
+		summarise(val=last(rel14)) %>% pull(val) -> US.val	
+	
+	filter(USStates.Covid19, Metric == m1, Metric2 == 'rel14') %>%
+		select(STATE, USPS, val, Long, Lat) %>%
+		{
+			left_join(map.state, ., by="STATE") %>% 
+				ggplot(aes(x = long, y = lat)) +
+				geom_polygon(aes(group = group, fill=val), colour = "black") +
+				geom_label_repel(data=., aes(label=paste(USPS,":", percent(val,acc=1)), x = Long, y = Lat), size=3, colour = "black", fill ="lightgrey", alpha=0.8) +	
+				geom_point(data=data.frame(lat=42.8126, long=-70.8773), size=4, shape=1, color='red') +
+				theme_map() + 
+				coord_map() +
+				geom_label(data=data.frame(lat=48, long=-80), label=paste("US Total = ", percent(US.val,acc=0.1)), color="black", size=5, fontface="bold",fill ="lightgrey") +	
+				labs(title = paste("USA Covid-19 Increase in", m1, "in last 2 weeks"), 
+						 subtitle = paste('Date :', max(USStates.Covid19.all$Date)), 
+						 caption = "Geometries: ggplot2 maps; Covid-19 Data: JHU CSSE") +
+				theme(legend.position = "right") +	
+				scale_fill_gradient2(low="darkgreen", mid="white", high="darkred",
+														 name = "Increase", labels = label_percent(accuracy = 1), limits=c(-1,1), oob=squish, 
+														 guide = guide_colorbar(direction = "vertical", barheight = unit(50, units = "mm"), barwidth = unit(3, units = "mm"),
+														 											 draw.ulim = F, title.position = 'top', title.vjust = 0.5, label.vjust = 0.5))
+		}
+}
+
+
+# generate US States plots
+expand.grid(m1=c("Confirmed",'Deaths')) %>% 
+	{ mapply(USHeat, m1=.$m1, SIMPLIFY = FALSE) } %>%
+  grid.arrange( grobs = ., nrow=1, heights=rep(4,1))
+
+                    											   
+```
 
 ### confirmed cases per state
 
@@ -477,11 +545,11 @@ USStates.Covid19 %>%
 	left_join(map.state, ., by="STATE") %>% 
   ggplot(aes(x = long, y = lat)) +
   geom_polygon(aes(group = group, fill=val), colour = "white") +
-	geom_label_repel(data=., aes(label=paste(USPS,":", ns(val)), x = Long, y = Lat), size=3, colour = "black") +	
+	geom_label_repel(data=., aes(label=paste(USPS,":", ns(val)), x = Long, y = Lat), size=3, colour = "black", fill ="lightgrey", alpha=0.8) +	
 	geom_point(data=data.frame(lat=42.8126, long=-70.8773), size=4, shape=1, color='red') +
 	theme_map() + 
 	coord_map() +
-	geom_label(data=data.frame(lat=48, long=-80), label=paste("US Total = ", ks(sum(.$val),acc=0.1)), color="black", size=5, fontface="bold") +			
+	geom_label(data=data.frame(lat=48, long=-80), label=paste("US Total = ", ks(sum(.$val),acc=0.1)), color="black", size=5, fontface="bold", fill ="lightgrey") +			
 	labs(x = NULL, y = NULL, title = "USA Covid-19 New Cases in last 2 weeks", 
          subtitle = paste('Date :', max(USStates.Covid19.all$Date)), 
          caption = "Geometries: ggplot2 maps; Covid-19 Data: JHU CSSE") +
@@ -499,40 +567,6 @@ USStates.Covid19 %>%
 ###  US State Map: Increase in New Cases in the last 2 weeks
 
 
-```{r,fig.width=13}
-####################################################################
-#  US State Map: Increase in New Cases in the last 2 weeks
-####################################################################
-
-USStates.Covid19.all %>% 
-	filter(Metric == "Confirmed", Metric2 == 'delta14') %>%
-	group_by(Date) %>% 
-	summarise(val=sum(val)) %>%
-  mutate(rel14 = last(val / lag(val, 14)-1)) %>%
-	summarise(val=last(rel14)) %>% pull(val) -> US
-
-USStates.Covid19 %>%
-	filter(Metric == "Confirmed", Metric2 == 'rel14') %>%
-	select(STATE, USPS, val, Long, Lat) %>%
-	{
-	left_join(map.state, ., by="STATE") %>% 
-  ggplot(aes(x = long, y = lat)) +
-  geom_polygon(aes(group = group, fill=val), colour = "white") +
-	geom_label_repel(data=., aes(label=paste(USPS,":", percent(val,acc=1)), x = Long, y = Lat), size=3, colour = "black") +	
-  geom_point(data=data.frame(lat=42.8126, long=-70.8773), size=4, shape=1, color='red') +
-	theme_map() + 
-	coord_map() +
-	geom_label(data=data.frame(lat=48, long=-80), label=paste("US Total = ", percent(US,acc=0.1)), color="black", size=5, fontface="bold") +	
-	labs(title = "USA Covid-19 Increase in New Cases in last 2 weeks", 
-         subtitle = paste('Date :', max(USStates.Covid19.all$Date)), 
-         caption = "Geometries: ggplot2 maps; Covid-19 Data: JHU CSSE") +
-	theme(legend.position = "right") +	
-	scale_fill_gradient2(low="darkgreen", mid="white", high="darkred",
-											name = "Increase", labels = label_percent(accuracy = 1), limits=c(-1,1), oob=squish, 
-                      guide = guide_colorbar(direction = "vertical", barheight = unit(50, units = "mm"), barwidth = unit(3, units = "mm"),
-                                             draw.ulim = F, title.position = 'top', title.vjust = 0.5, label.vjust = 0.5))
-	}	
-```
 
 
 ```{r, warning=FALSE, fig.width=13, fig.asp=.4}
