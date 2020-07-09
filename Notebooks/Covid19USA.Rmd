@@ -350,7 +350,7 @@ USCounties.JHU 	%>% left_join(USCounties, by="FIPS") %>% ungroup->  USCounties.C
 
 ## USA total
 
-```{r}
+```{r,warning=FALSE}
 ####################################################################
 #  US State Map: Increase in New Cases in the last 2 weeks
 ####################################################################
@@ -361,12 +361,11 @@ USStates.Covid19.all %>%
 	  summarise_at('val', sum) %>%
 	  ggplot(aes(x=Date, y=val, colour=Metric)) +
       geom_point(shape=1, size=2) + 
-	    geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
+	    geom_smooth(formula ='y ~ x',method = 'loess', span=0.40) +
       scale_x_date() +
-	    scale_y_log10(limits=c(10,10^5),breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+	    scale_y_log10(limits=c(10,10^5), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
 	    labs(title="USA Cases and Deaths per Day", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Count") +
 	    theme_bw() 
-	  
 ```
 
 ## Per State
@@ -378,7 +377,7 @@ The following 12 graphs show different dimensions of the covid-19 outbreak in th
 
 - The first graph on the top left shows the number of confirmed cases as of today per state and in total for the entire country. The colors on the map indicate how many confirmed cases per state. White yellow means more than a hundred thousand cases, orange meas ten thousand, red means one thousand.
 
-- The graph on the top right shows the number of confirmed cases per capita pr state. Per capata numbers are per 100,000 inhabitants.
+- The graph on the top right shows the number of confirmed cases per capita pr state. Per capita numbers are per 100,000 inhabitants.
 
 - On the second row you see the US map with the number of new cases as of `r max(USStates.Covid19$Date)`. On the left are the absolute numbers and on the right are one a per-capita basis i.e. per one hundred thousand people in the state.
 
@@ -743,10 +742,6 @@ USStates.Covid19.all %>%
                                              draw.ulim = F, title.position = 'top', title.vjust = 0.5, label.vjust = 0.5))
 
 ```
-
-
-
-
 
 ### Heat map: Deaths per Day
 

@@ -753,7 +753,7 @@ df50 %>%
 	  transition_time(Date, range=c(date("2020-1-15"),max(df50$Date))) +
 		ease_aes('linear') +
 		labs(subtitle = "Date: {frame_time}")	-> p  
-	animate(p, width = 1920/2, height = 1080/2, fps=10, duration=20, end_pause=5, rewind=TRUE)  %>%
+	animate(p, width = 1920/2, height = 1080/2, fps=10, duration=20, rewind=TRUE)  %>%
 	anim_save("WorldAnimation.gif", animation = .)
 }	
 ```
