@@ -3,6 +3,8 @@ title: "Covid-19 Global Analysis"
 output: html_notebook
 ---
 
+(work in progress, not spell checked nor edited for english language)
+
 # Introduction
 
 This is an analysis of country level Covid-19 pandemic data as available from Johns Hopkins University in combination with United Nations population data. To hide code, toggle the 'Code' button on the top right of this page.
@@ -39,7 +41,7 @@ ks <- function (x, acc=1) number_format(accuracy = acc, scale = 1/1000, suffix =
 ```
 
 
-# Data Loading
+# Data 
 
 The data for this analysis is from
 
