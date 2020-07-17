@@ -364,13 +364,14 @@ The table below shows a ranked list of countries with new confirmed cases per we
 # Table
 ####################################################################
 
-df25 %>% filter(Metric == 'Confirmed') %>% 
+df2 %>% filter(Metric == 'Confirmed') %>% 
 	group_by(`Country/Region`) %>%
 	arrange(Date) %>%
 	mutate(NewCases = n-lag(n, 7, default=0)) %>%
 	summarize(Peak=Date[which.max(NewCases)]-3, Max=max(NewCases), Last=last(NewCases), Inc=Last / Max-1) %>%
 	mutate(Decrease=cell_spec(percent(-Inc,accuracy=0.1),'html', color='white', background= ifelse(Inc < -0.5,"green", ifelse(Inc < -0.1, "black", "red")))) %>% 
 	arrange(desc(Last)) %>% 
+	head(50) %>%
 	mutate_at(vars(Max,Last), funs(ks(.,acc=0.1))) %>% 
 	select(-Inc) %>%
 	kable(format = "html", escape = F, align = "lcccc") %>% 
@@ -388,13 +389,14 @@ This second table below shows a ranked list of countries with new confirmed case
 # Table: confirmed cases per capita
 ####################################################################
 
-df50 %>% filter(Metric == 'Confirmed') %>% 
+df2 %>% filter(Metric == 'Confirmed') %>% 
 	group_by(`Country/Region`) %>%
 	arrange(Date) %>%
 	mutate(NewCases = Cap-lag(Cap, 7, default=0)) %>%
 	summarize(Peak=Date[which.max(NewCases)]-3, Max=max(NewCases), Last=last(NewCases), Inc=Last / Max-1) %>%
 	mutate(Decrease=cell_spec(percent(-Inc,accuracy=0.1),'html', color='white', background= ifelse(Inc < -0.5,"green", ifelse(Inc < -0.1, "black", "red")))) %>% 
 	arrange(desc(Last)) %>% 
+	head(50) %>%
 	mutate_at(vars(Max,Last), funs(round(.,1))) %>% 
 	select(-Inc) %>%
 	kable(format = "html", escape = F, align = "lcccc") %>% 
