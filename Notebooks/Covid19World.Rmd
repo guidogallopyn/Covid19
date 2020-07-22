@@ -492,7 +492,7 @@ df25 %>% filter(Metric == 'Confirmed') %>%
   geom_point(shape=1, size=3, colour='gray') + 
 	geom_smooth(formula ='y ~ x', method = 'loess', se=FALSE, colour='gray') +
 	geom_smooth(data=filter(.,`Country/Region`=='US'),formula ='y ~ x', method = 'loess', se=FALSE) +	
-	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(`Country/Region`,percent(NewCases, accuracy=0.1),sep=',')), nudge_x=0.7, colour='grey') +
+	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(`Country/Region`, percent(NewCases, accuracy=0.01),sep=',')), nudge_x=0.7, colour='grey') +
 	scale_x_date() +
 	scale_y_log10(limits=c(10^-3,1),breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", percent)) +
 	labs(title="Relative Increase of New Confirmed Cases per Day", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Relative New Cases/day") +
@@ -585,8 +585,7 @@ df25 %>% filter(Metric == 'Deaths') %>%
 	geom_smooth(data=filter(.,`Country/Region`=='US'),formula ='y ~ x', method = 'loess', se=FALSE) +	
 	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(`Country/Region`, percent(New, accuracy=0.1),sep=',')), nudge_x=0.7, colour='grey') +
 	scale_x_date() +
-	scale_y_log10(limits=c(10^-3,1),breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", percent))) +
-
+	scale_y_log10(limits=c(10^-3,1),breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", percent)) +
 	labs(title="Relative Increase of Deaths per Day", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Relative Increase Deaths/day") +
 	theme_bw() + theme(legend.position = "none")
 	}
