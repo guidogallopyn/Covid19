@@ -362,7 +362,7 @@ USStates.Covid19.all %>%
 	  ggplot(aes(x=Date, y=val, colour=Metric)) +
       geom_point(shape=1, size=2) + 
 	    geom_smooth(formula ='y ~ x',method = 'loess', span=0.40) +
-      scale_x_date() +
+      scale_x_date(date_breaks="1 month", date_labels = "%b") +
 	    scale_y_log10(limits=c(10,10^5), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
 	    labs(title="USA Cases and Deaths per Day", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Count") +
 	    theme_bw() 
@@ -469,8 +469,6 @@ USHeat <- function(m1) {
 expand.grid(m1=c("Confirmed",'Deaths')) %>% 
 	{ mapply(USHeat, m1=.$m1, SIMPLIFY = FALSE) } %>%
   grid.arrange( grobs = ., nrow=1, heights=rep(4,1))
-
-                    											   
 ```
 
 ### confirmed cases per state
@@ -608,6 +606,32 @@ USStates.Covid19 %>%
 
 ```
 
+```{r, warning=FALSE, fig.width=13, fig.asp=.4}
+####################################################################
+# New Cases per  vs increase in new cases in the last 2 weeks 
+
+
+USStates.Covid19.all %>%
+	filter(Metric == "Confirmed", Metric2 %in% c('delta14', 'rel14')) %>% 
+	pivot_wider(names_from=c("Metric2"), values_from="val") %>% 
+	filter(Date >date("2020-04-01")) %>% 
+	{
+  ggplot(., aes(x = Date , y = rel14, group = USPS)) +
+	geom_point(color= 'gray',shape=1) +
+  geom_smooth(color= 'gray',formula ='y ~ x', method = 'loess', span=0.10, se=FALSE) +
+	geom_point(data=filter(., USPS %in% c('MA','NY','CA','FL','TX','AZ')), aes(color=USPS), shape=1) +	
+	geom_smooth(data=filter(., USPS %in% c('MA','NY','CA','FL','TX','AZ')), aes(color=USPS), formula ='y ~ x',method = 'loess', span=0.10, se=FALSE) +	
+	geom_hline(yintercept = 0)	+	
+  scale_x_date(date_breaks="1 month", date_labels = "%b", date_minor_breaks = "1 week") +
+	scale_y_continuous(limits=c(-1,3), labels = scales::percent_format(accuracy = 1)) +
+	labs(title="Acceleration over time", subtitle = paste("Covid19 pandemic","-",date()), x="Time (2020)", y="Relative Increase (%)") +
+	theme_bw() }	-> p3
+
+
+  grid.arrange(p3, nrow=1)
+
+```
+
 ### Heat map New Cases per 2 Weeks relative to state maximum 
 
 ```{r,fig.width=13}
@@ -662,7 +686,7 @@ USStates.Covid19.all %>%
       geom_point(shape=1, size=3) + 
 	    geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
       geom_label_repel(data = filter(., Date == max(Date)), aes(label = paste(USPS,ks(val,0.1),sep=",")), nudge_x=2) +
-	    scale_x_date() +
+      scale_x_date(date_breaks="1 month", date_labels = "%b", date_minor_breaks = "1 week") +
 	    scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
                     labels = trans_format("log10", math_format(10^.x))) +
 	    labs(title="Confirmed Cases for top 25 US States", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
@@ -684,8 +708,8 @@ USStates.Covid19.all %>%
   {	ggplot(data=., aes(x=Date, y=val, colour=STNAME)) +
     geom_point(shape=1, size=3) + 
 	  geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
-    geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(USPS,ns(val,1),sep=",")), nudge_x=2) +
-	  scale_x_date() +
+    geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(USPS, ns(val,1), sep=":")), nudge_x=2) +
+	  scale_x_date(date_breaks="1 month", date_labels = "%b", date_minor_breaks = "1 week") +
 	  scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
 	  labs(title="New Confirmed Cases for top 25 US States", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
 	  theme_bw() + theme(legend.position = "none")
@@ -711,7 +735,6 @@ USStates.Covid19.all %>%
   	facet_wrap(vars(STNAME), ncol=7)
 	}
 ```
-
 
 ### Heat map New Cases per Day 
 
@@ -843,7 +866,7 @@ USCounties.Covid19.all %>%
   geom_point(shape=1, size=3) + 
 	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
 	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(CTYNAME,USPS,ks(val,0.1),sep=",")), nudge_x=2) +
-	scale_x_date() +
+	scale_x_date(date_breaks="1 month", date_labels = "%b", date_minor_breaks = "1 week") +
 	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
                 labels = trans_format("log10", math_format(10^.x))) +
 	labs(title="Confirmed Cases per Top US County", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
@@ -866,7 +889,7 @@ USCounties.Covid19.all %>%
   geom_point(shape=1, size=3) + 
 	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
 	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(CTYNAME,ks(val,0.01),sep=",")), nudge_x=2) +
-	scale_x_date() +
+  scale_x_date(date_breaks="1 month", date_labels = "%b", date_minor_breaks = "1 week") +
 	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
                 labels = trans_format("log10", math_format(10^.x))) +
 	labs(title="Confirmed Cases in MA", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
@@ -898,7 +921,7 @@ USCounties.Covid19.all %>%
   geom_point(shape=1, size=3) + 
 	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
 	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(CTYNAME, USPS, ks(val,0.01),sep=",")), nudge_x=2) +
-	scale_x_date() +
+  scale_x_date(date_breaks="1 month", date_labels = "%b", date_minor_breaks = "1 week") +
 	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
                 labels = trans_format("log10", math_format(10^.x))) +
 	labs(title="Confirmed Cases near NBPT", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
@@ -921,7 +944,7 @@ USCounties.Covid19.all %>%
   geom_point(shape=1, size=3) + 
 	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
 	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(CTYNAME, USPS, ns(val),sep=",")), nudge_x=2) +
-	scale_x_date() +
+  scale_x_date(date_breaks="1 month", date_labels = "%b", date_minor_breaks = "1 week") +
 	#scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
 	labs(title="Confirmed Cases per Capita near NBPT", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
 	theme_bw() + theme(legend.position = "none")
@@ -944,7 +967,7 @@ USCounties.Covid19.all %>%
   geom_point(shape=1, size=3) + #geom_line() + 
 	geom_smooth(formula ='y ~ x',method = 'loess', span=0.20, se=FALSE) +
 	geom_label_repel(data=filter(., Date==max(Date) | val==max(val)), aes(label = paste(CTYNAME, USPS, val,sep=",")), nudge_x=2) +
-	scale_x_date() +
+  scale_x_date(date_breaks="1 month", date_labels = "%b", date_minor_breaks = "1 week") +
 	labs(title="New Confirmed Cases per Day near NBPT", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases/Day") +
 	theme_bw() + theme(legend.position = "none")
 	  }
@@ -968,7 +991,7 @@ USCounties.Covid19.all %>%
   geom_point(shape=1, size=3) + 
 	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
 	geom_label_repel(data=filter(., Date==max(Date) | val==max(val)), aes(label = paste(CTYNAME, USPS, val,sep=",")), nudge_x=2) +
-	scale_x_date() +
+  scale_x_date(date_breaks="1 month", date_labels = "%b", date_minor_breaks = "1 week") +
 	  scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
                   labels = trans_format("log10", math_format(10^.x))) +
 	  labs(title="New Confirmed Cases per Day near NBPT", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases/Day") +
@@ -1015,7 +1038,7 @@ USCounties.Covid19.all %>%
   geom_point(shape=1, size=3) + 
 	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
 	geom_label_repel(data=filter(., Date==max(Date) | val==max(val)), aes(label = paste(CTYNAME,USPS,val,sep=",")), nudge_x=2) +
-	scale_x_date() +
+  scale_x_date(date_breaks="1 month", date_labels = "%b", date_minor_breaks = "1 week") +
 	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
                 labels = trans_format("log10", math_format(10^.x))) +
 	labs(title="New Confirmed Cases per Top US County", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
@@ -1174,7 +1197,7 @@ knitr::include_graphics("USMap_Deaths_delta7_TRUE.gif")
 ####################################################################
 # Animation
 ####################################################################
-if(wday(today(),label=TRUE) == "Sun") { # takes hours, only do this once a week and save
+if(wday(today(),label=TRUE) == "Sat") { # takes hours, only do this once a week and save
 USStates.Covid19.all %>%
   filter(Metric %in% c("Confirmed","Deaths"), Metric2 == "n") %>% 
 	pivot_wider(names_from=c("Metric"), values_from = "val") %>% 
@@ -1189,7 +1212,25 @@ USStates.Covid19.all %>%
 	labs(subtitle = "Date: {frame_time}")	-> p  
 	animate(p, width = 1920/2, height = 1080/2, fps=10, duration=20, end_pause=10, rewind=TRUE)  %>%
 	anim_save("USAnimation.gif", animation = .)
+	
+USStates.Covid19.all %>%
+  filter(Metric %in% c("Confirmed","Deaths"), Metric2 == "n") %>% 
+	mutate(val = 10^5 * val / POPESTIMATE2019) %>% 
+	pivot_wider(names_from=c("Metric"), values_from = "val") %>% 
+	ggplot(aes(x = Confirmed, y = Deaths, colour = STNAME)) +
+	geom_point(aes( size = POPESTIMATE2019)) +
+	#geom_label_repel(aes(label = USPS)) +
+	scale_x_log10(limits=c(100,NA), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+	scale_y_log10(limits=c(10,NA), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+	#theme(legend.position = "none") +
+	transition_time(Date, range=c(date("2020-03-01"),max(USStates.Covid19.all$Date))) +
+  ease_aes('linear') +
+	labs(subtitle = "Date: {frame_time}")	-> p  
+	animate(p, width = 1920/2, height = 1080/2, fps=10, duration=20, end_pause=10, rewind=TRUE)  %>%
+	anim_save("USAnimationCapita.gif", animation = .)
 }	
+
+
 ```
 
 
@@ -1199,12 +1240,16 @@ knitr::include_graphics("USAnimation.gif")
 ```
 !![Cases and deaths over time animation](USAnimation.gif)
 
+```{r, fig.width=21}
+knitr::include_graphics("USAnimationCapita.gif")
+```
+!![Cases and deaths over time animation](USAnimationCapita.gif)
 
 ```{r, warning=FALSE}
 ####################################################################
 # New Cases vs increase in new cases in the last 2 weeks 
 ####################################################################
-if(wday(today(),label=TRUE) == "Sat") { # takes hours, only do this once a week and save
+if(wday(today(),label=TRUE) == "Tue") { # takes hours, only do this once a week and save
 USStates.Covid19.all %>%
 	filter(Metric == "Confirmed", Metric2 %in% c('delta14', 'rel14')) %>% 
 	pivot_wider(names_from="Metric2", values_from="val") %>% 
@@ -1219,6 +1264,22 @@ USStates.Covid19.all %>%
 	labs(subtitle = "Date: {frame_time}")	-> p2  
 	animate(p2, width = 1920/2, height = 1080/2, fps=10, duration=20, end_pause=10) %>%
 	anim_save("USAnimation2.gif", animation = .)
+	
+USStates.Covid19.all %>%
+	filter(Metric == "Confirmed", Metric2 %in% c('delta14', 'rel14')) %>% 
+	pivot_wider(names_from="Metric2", values_from="val") %>% 
+	mutate(delta14 = 10^5 * delta14 / POPESTIMATE2019) %>% 
+  ggplot(aes(x = delta14 , y = rel14)) +
+  geom_point(aes(size= POPESTIMATE2019, color= USPS )) +
+  scale_x_continuous(limits=c(10,NA), trans="log10",breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+	scale_y_continuous(limits=c(-1,5), trans="identity", labels = scales::percent_format(accuracy = 1)) +
+	labs(title="New Cases per Capita and Acceleration", subtitle = paste("Covid19 pandemic","-",date()), x="New cases in 2 weeks", y="Relative Increase (%)") +
+	theme_bw() + 
+	transition_time(Date, range=c(date("2020-04-01"),max(USStates.Covid19.all$Date))) +
+  ease_aes('linear') +
+	labs(subtitle = "Date: {frame_time}")	-> p3  
+	animate(p3, width = 1920/2, height = 1080/2, fps=10, duration=20, end_pause=10) %>%
+	anim_save("USAnimation2Capita.gif", animation = .)	
 }	
 ```
 
@@ -1226,6 +1287,12 @@ USStates.Covid19.all %>%
 knitr::include_graphics("USAnimation2.gif")
 ```
 !![Cases and deaths over time animation](USAnimation2.gif)
+
+```{r, fig.width=21}
+knitr::include_graphics("USAnimation2Capita.gif")
+```
+!![Cases and deaths over time animation](USAnimation2Capita.gif)
+
 
 TODO: 
 

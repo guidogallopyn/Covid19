@@ -420,7 +420,7 @@ df25 %>% filter(Metric == 'Confirmed') %>%
 	{
 	ggplot(., aes(x=Date, y=NewCases,color=`Country/Region`)) +
   geom_point(shape=1, size=2) + 
-	geom_smooth(formula ='y ~ x',method = 'loess', span=0.70, se=FALSE) +
+	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
 	geom_label_repel(data=filter(., Date==max(Date) | NewCases==max(NewCases) ), aes(label = paste(`Country/Region`,ks(NewCases,0.01), sep=',')), nudge_x=2) +
 	scale_x_date() + scale_y_continuous(limits = c(0,NA)) +
 	labs(title="New Confirmed New Cases per Day", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="New Cases/day") +
@@ -769,7 +769,7 @@ df25 %>%
 	select(Date, Metric, `Country/Region`,  n, PopTotal) %>% 
 	spread(Metric,n) %>% 
 	group_by(`Country/Region`) %>%
-	summarise(DConfirmed = last(Confirmed)-nth(Confirmed,-2), DDeaths = last(Deaths)-nth(Deaths,-2), g=last(Deaths)/nth(Deaths,-28), Confirmed=last(Confirmed), Deaths = last(Deaths)) %>% 
+	summarise(DConfirmed = last(Confirmed)-nth(Confirmed,-2), DDeaths = last(Deaths)-nth(Deaths,-2), g=4*last(Deaths)/nth(Deaths,-7), Confirmed=last(Confirmed), Deaths = last(Deaths)) %>% 
 	mutate(CFR = 100 * Deaths / Confirmed, DGrowth = DDeaths/Deaths, EstInfect = round(g*Deaths / 0.015), IFR = 100 * Deaths/EstInfect, UnderEst=round(EstInfect/Confirmed,1) ) %>%
 	arrange(desc(EstInfect)) %>%
 	select(-g) %>%
