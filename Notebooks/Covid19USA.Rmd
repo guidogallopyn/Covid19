@@ -1095,6 +1095,40 @@ expand.grid(pc=c(FALSE,TRUE), m1=c("Confirmed",'Deaths'), m2=c('n','delta7')) %>
   grid.arrange( grobs = ., nrow=4, heights=rep(4,4))
 ```   
 
+
+```{r,fig.width=18, fig.height=40}
+####################################################################
+# Graphical Exploration US Counties in the North-East heatmaps on geomaps
+####################################################################
+
+NE <- filter(USStates, REGION == "Northeast") %>% pull (STATE)
+
+PlotNECountyMap <- function (m1="Confirmed", m2='n', pc=FALSE) {
+	filter(USCounties.Covid19 , Metric == m1, Metric2 == m2 ) %>% 
+	mutate(val = pc * (10^5 * val / POPESTIMATE2019) + (1-pc) *val) %>% 
+	left_join(map.county, ., by="FIPS") %>% 
+	filter(REGION == 'Northeast') %>%	
+	ggplot(aes(x = long, y = lat)) +
+  geom_polygon(aes(group = group, fill=val)) +
+  geom_path(data=filter(map.state, STATE %in% NE), aes(x = long, y = lat, group = group), colour = "white", size=.2) +
+	drawLabels(paste(m1, m2, ", per Capita =", pc)) +	
+  theme_map() + 
+	coord_map () +
+	theme(legend.position = "right") +
+	scale_fill_viridis( option = "inferno", direction = +1, name = "", limits= c(0,NA), breaks=10^seq(0,5),
+											trans= "pseudo_log", labels = label_number(accuracy = 1, big.mark = ','),
+                      guide = guide_colorbar(direction = "vertical", barheight = unit(50, units = "mm"), barwidth = unit(3, units = "mm"),
+                                             draw.ulim = F, title.position = 'top', title.vjust = 0.5, label.vjust = 0.5))
+}	
+
+# generate county plots
+expand.grid(pc=c(FALSE,TRUE), m1=c("Confirmed",'Deaths'), m2=c('n','delta','delta7')) %>% 
+#expand.grid(pc=c(FALSE), m1=c("Confirmed"), m2=c('n','delta','delta7')) %>% 	
+	{ mapply(PlotNECountyMap, m1=.$m1, m2=.$m2, pc=.$pc, SIMPLIFY = FALSE) } %>%
+  grid.arrange( grobs = ., nrow=6, heights=rep(4,6))
+```  
+
+
 # Animated heat maps 
 
 confirmed cases and new cases over time per US county
