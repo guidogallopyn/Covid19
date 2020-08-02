@@ -1231,7 +1231,7 @@ knitr::include_graphics("USMap_Deaths_delta7_TRUE.gif")
 ####################################################################
 # Animation
 ####################################################################
-if(wday(today(),label=TRUE) == "Sat") { # takes hours, only do this once a week and save
+if(wday(today(),label=TRUE) == "Sun") { # takes hours, only do this once a week and save
 USStates.Covid19.all %>%
   filter(Metric %in% c("Confirmed","Deaths"), Metric2 == "n") %>% 
 	pivot_wider(names_from=c("Metric"), values_from = "val") %>% 
@@ -1283,7 +1283,7 @@ knitr::include_graphics("USAnimationCapita.gif")
 ####################################################################
 # New Cases vs increase in new cases in the last 2 weeks 
 ####################################################################
-if(wday(today(),label=TRUE) == "Tue") { # takes hours, only do this once a week and save
+if(wday(today(),label=TRUE) == "Sun") { # takes hours, only do this once a week and save
 USStates.Covid19.all %>%
 	filter(Metric == "Confirmed", Metric2 %in% c('delta14', 'rel14')) %>% 
 	pivot_wider(names_from="Metric2", values_from="val") %>% 

@@ -820,6 +820,17 @@ outcome: on June 30, USA 2.6 million cases, 127k deaths, new cases in US is up t
 
 - India will reach 35k cases per day
 
+outcome: on July 31, 
+
+- USA added 1.8 million cases and 22k deaths, and reached 4.56 million cases and 153k deaths, a CFT of 3.3%. Lower than predicted, max new confirmed cases was 77k per day and max deaths per day 1430.
+
+- US decline in deaths reversed as predicted and started to increase bginning July.
+
+- Brazil reached 2.66 million cases
+
+- India reached 1.7 million cases and adds 60k cases per day, and is now a top concern
+
+
 # References
 
 
