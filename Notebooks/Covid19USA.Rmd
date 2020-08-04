@@ -609,7 +609,7 @@ USStates.Covid19 %>%
 ```{r, warning=FALSE, fig.width=13, fig.asp=.4}
 ####################################################################
 # New Cases per  vs increase in new cases in the last 2 weeks 
-
+incstates <- c('MA','NY','NH', 'CT', 'ME', 'VT', 'CA','FL','TX','AZ')
 
 USStates.Covid19.all %>%
 	filter(Metric == "Confirmed", Metric2 %in% c('delta14', 'rel14')) %>% 
@@ -619,8 +619,8 @@ USStates.Covid19.all %>%
   ggplot(., aes(x = Date , y = rel14, group = USPS)) +
 	geom_point(color= 'gray',shape=1) +
   geom_smooth(color= 'gray',formula ='y ~ x', method = 'loess', span=0.10, se=FALSE) +
-	geom_point(data=filter(., USPS %in% c('MA','NY','CA','FL','TX','AZ')), aes(color=USPS), shape=1) +	
-	geom_smooth(data=filter(., USPS %in% c('MA','NY','CA','FL','TX','AZ')), aes(color=USPS), formula ='y ~ x',method = 'loess', span=0.10, se=FALSE) +	
+	geom_point(data=filter(., USPS %in% incstates), aes(color=USPS), shape=1) +	
+	geom_smooth(data=filter(., USPS %in% incstates), aes(color=USPS), formula ='y ~ x',method = 'loess', span=0.10, se=FALSE) +	
 	geom_hline(yintercept = 0)	+	
   scale_x_date(date_breaks="1 month", date_labels = "%b", date_minor_breaks = "1 week") +
 	scale_y_continuous(limits=c(-1,3), labels = scales::percent_format(accuracy = 1)) +
