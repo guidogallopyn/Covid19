@@ -363,7 +363,7 @@ USStates.Covid19.all %>%
       geom_point(shape=1, size=2) + 
 	    geom_smooth(formula ='y ~ x',method = 'loess', span=0.40) +
       scale_x_date(date_breaks="1 month", date_labels = "%b") +
-	    scale_y_log10(limits=c(10,10^5), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+	    scale_y_log10(limits=c(100,10^5), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
 	    labs(title="USA Cases and Deaths per Day", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Count") +
 	    theme_bw() 
 ```
@@ -1015,7 +1015,7 @@ USCounties.Covid19.all %>%
 	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
 	geom_label_repel(data=filter(., Date==max(Date) | val==max(val)), aes(label = paste(CTYNAME, USPS, round(val,2), sep=",")), nudge_x=2) +
 	scale_x_date() +
-	  #scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
 	  labs(title="New Cases / Capita per Day near NBPT", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases/Capita/Day") +
 	  theme_bw() + theme(legend.position = "none")
 	  }
@@ -1111,7 +1111,7 @@ PlotNECountyMap <- function (m1="Confirmed", m2='n', pc=FALSE) {
 	ggplot(aes(x = long, y = lat)) +
   geom_polygon(aes(group = group, fill=val)) +
   geom_path(data=filter(map.state, STATE %in% NE), aes(x = long, y = lat, group = group), colour = "white", size=.2) +
-	drawLabels(paste(m1, m2, ", per Capita =", pc)) +	
+	drawLabels(paste("US North-East", m1, m2, "; per Capita =", pc)) +	
   theme_map() + 
 	coord_map () +
 	theme(legend.position = "right") +
@@ -1307,7 +1307,7 @@ USStates.Covid19.all %>%
   geom_point(aes(size= POPESTIMATE2019, color= USPS )) +
   scale_x_continuous(limits=c(10,NA), trans="log10",breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
 	scale_y_continuous(limits=c(-1,5), trans="identity", labels = scales::percent_format(accuracy = 1)) +
-	labs(title="New Cases per Capita and Acceleration", subtitle = paste("Covid19 pandemic","-",date()), x="New cases in 2 weeks", y="Relative Increase (%)") +
+	labs(title="New Cases per Capita and Acceleration", subtitle = paste("Covid19 pandemic","-",date()), x="New cases per Capita in 2 weeks", y="Relative Increase (%)") +
 	theme_bw() + 
 	transition_time(Date, range=c(date("2020-04-01"),max(USStates.Covid19.all$Date))) +
   ease_aes('linear') +

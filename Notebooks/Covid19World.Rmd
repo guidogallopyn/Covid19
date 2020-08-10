@@ -272,7 +272,7 @@ dfUSEU %>% filter(Metric== 'Confirmed') %>%
   geom_point(shape=1, size=3) + 
 	geom_smooth(formula ='y ~ x',method = 'loess', span=0.30, se=FALSE) +
 	#geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(`inEU`,ks(n),sep=',')), nudge_x=0.7) +
-	scale_x_date() +
+  scale_x_date(date_breaks="1 month", date_labels = "%b", date_minor_breaks = "1 week") +
 	labs(title="New Cases per Day: US vs EU", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="New Cases") +
 	theme_bw() 
 	}		
@@ -372,7 +372,7 @@ df2 %>% filter(Metric == 'Confirmed') %>%
 	mutate(Decrease=cell_spec(percent(-Inc,accuracy=0.1),'html', color='white', background= ifelse(Inc < -0.5,"green", ifelse(Inc < -0.1, "black", "red")))) %>% 
 	arrange(desc(Last)) %>% 
 	head(50) %>%
-	mutate_at(vars(Max,Last), funs(ks(.,acc=0.1))) %>% 
+	mutate_at(vars(Max,Last), ~ks(.,acc=0.1)) %>% 
 	select(-Inc) %>%
 	kable(format = "html", escape = F, align = "lcccc") %>% 
 	kable_styling(fixed_thead = T, bootstrap_options = c("striped", "hover","condensed")) %>%
@@ -397,7 +397,7 @@ df2 %>% filter(Metric == 'Confirmed') %>%
 	mutate(Decrease=cell_spec(percent(-Inc,accuracy=0.1),'html', color='white', background= ifelse(Inc < -0.5,"green", ifelse(Inc < -0.1, "black", "red")))) %>% 
 	arrange(desc(Last)) %>% 
 	head(50) %>%
-	mutate_at(vars(Max,Last), funs(round(.,1))) %>% 
+	mutate_at(vars(Max,Last), ~round(.,1)) %>% 
 	select(-Inc) %>%
 	kable(format = "html", escape = F, align = "lcccc") %>% 
 	kable_styling(fixed_thead = T, bootstrap_options = c("striped", "hover","condensed")) %>%
@@ -423,6 +423,28 @@ df25 %>% filter(Metric == 'Confirmed') %>%
 	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
 	geom_label_repel(data=filter(., Date==max(Date) | NewCases==max(NewCases) ), aes(label = paste(`Country/Region`,ks(NewCases,0.01), sep=',')), nudge_x=2) +
 	scale_x_date() + scale_y_continuous(limits = c(0,NA)) +
+	labs(title="New Confirmed New Cases per Day", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="New Cases/day") +
+	theme_bw() + theme(legend.position = "none")
+	}
+```
+
+```{r,fig.width=13}
+####################################################################
+# Graphical Exploration Daily Growth of Confirmed Cases
+####################################################################
+
+df25 %>% filter(Metric == 'Confirmed') %>% 
+	group_by(`Country/Region`) %>%
+	arrange(n) %>%
+	mutate(NewCases = n-lag(n, default=0)) %>%
+	filter(NewCases > 50) %>%
+	{
+	ggplot(., aes(x=Date, y=NewCases,color=`Country/Region`)) +
+  geom_point(shape=1, size=2) + 
+	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
+	geom_label_repel(data=filter(., Date==max(Date) | NewCases==max(NewCases) ), aes(label = paste(`Country/Region`,ks(NewCases,0.01), sep=',')), nudge_x=2) +
+	scale_x_date() +
+	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
 	labs(title="New Confirmed New Cases per Day", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="New Cases/day") +
 	theme_bw() + theme(legend.position = "none")
 	}
@@ -492,7 +514,8 @@ df25 %>% filter(Metric == 'Confirmed') %>%
   geom_point(shape=1, size=3, colour='gray') + 
 	geom_smooth(formula ='y ~ x', method = 'loess', se=FALSE, colour='gray') +
 	geom_smooth(data=filter(.,`Country/Region`=='US'),formula ='y ~ x', method = 'loess', se=FALSE) +	
-	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(`Country/Region`, percent(NewCases, accuracy=0.01),sep=',')), nudge_x=0.7, colour='grey') +
+	geom_label_repel(data=filter(., Date==max(Date),`Country/Region` != 'US'), aes(label = paste(`Country/Region`, percent(NewCases, accuracy=0.01),sep=',')), nudge_x=0.7, colour='grey') +
+	geom_label_repel(data=filter(., Date==max(Date),`Country/Region` == 'US'), aes(label = paste(`Country/Region`, percent(NewCases, accuracy=0.01),sep=',')), nudge_x=0.7, colour='red') +		
 	scale_x_date() +
 	scale_y_log10(limits=c(10^-3,1),breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", percent)) +
 	labs(title="Relative Increase of New Confirmed Cases per Day", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Relative New Cases/day") +
@@ -583,7 +606,9 @@ df25 %>% filter(Metric == 'Deaths') %>%
   geom_point(shape=1, size=3, colour='gray') + 
 	geom_smooth(formula ='y ~ x', method = 'loess', se=FALSE, colour='gray') +
 	geom_smooth(data=filter(.,`Country/Region`=='US'),formula ='y ~ x', method = 'loess', se=FALSE) +	
-	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(`Country/Region`, percent(New, accuracy=0.1),sep=',')), nudge_x=0.7, colour='grey') +
+	geom_label_repel(data=filter(., Date==max(Date),`Country/Region` != 'US'), aes(label = paste(`Country/Region`, percent(New, accuracy=0.01),sep=',')), nudge_x=0.7, colour='grey') +
+	geom_label_repel(data=filter(., Date==max(Date),`Country/Region` == 'US'), aes(label = paste(`Country/Region`, percent(New, accuracy=0.01),sep=',')), nudge_x=0.7, colour='red') +		
+			
 	scale_x_date() +
 	scale_y_log10(limits=c(10^-3,1),breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", percent)) +
 	labs(title="Relative Increase of Deaths per Day", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Relative Increase Deaths/day") +
@@ -792,13 +817,13 @@ df25 %>%
 
 # Guido's Predictions
 
-## May 1st, 2020
+## Prediction May 1st, 2020
 
 - By end of May, US will have 1.5 million confirmed cases and 100k deaths
 
 outcome: on May 31 2020 1.79 million cases, and 104k deaths 
 
-## June 1st, 2020
+##  Prediction June 1st, 2020
 
 - By end of June, US will have minimum 2.3 million confirmed cases and 125k deaths
 
@@ -808,7 +833,7 @@ outcome: on May 31 2020 1.79 million cases, and 104k deaths
 
 outcome: on June 30, USA 2.6 million cases, 127k deaths, new cases in US is up to 45k/day (up from ~20k/day), brazil has 1.4 million cases
 
-## July 1st, 2020
+##  Prediction July 1st, 2020
 
 - before end of July, US will see 100k new confirmed cases per day, and 2000 deaths per day
 
