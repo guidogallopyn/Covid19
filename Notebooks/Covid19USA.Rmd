@@ -606,10 +606,11 @@ USStates.Covid19 %>%
 
 ```
 
-```{r, warning=FALSE, fig.width=13, fig.asp=.4}
+```{r, warning=FALSE, fig.width=18, fig.asp=.4}
 ####################################################################
 # New Cases per  vs increase in new cases in the last 2 weeks 
 incstates <- c('MA','NY','NH', 'CT', 'ME', 'VT', 'CA','FL','TX','AZ')
+incstates <- c('MA','FL', 'NY')
 
 USStates.Covid19.all %>%
 	filter(Metric == "Confirmed", Metric2 %in% c('delta14', 'rel14')) %>% 
@@ -627,8 +628,25 @@ USStates.Covid19.all %>%
 	labs(title="Acceleration over time", subtitle = paste("Covid19 pandemic","-",date()), x="Time (2020)", y="Relative Increase (%)") +
 	theme_bw() }	-> p3
 
+USStates.Covid19.all %>%
+	filter(Metric == "Confirmed", Metric2 %in% c('delta14', 'rel14')) %>% 
+	pivot_wider(names_from=c("Metric2"), values_from="val") %>% 
+	mutate(delta14 = 10^5 * delta14 / POPESTIMATE2019) %>% 
+	filter(Date >date("2020-04-01")) %>%
+	{
+  ggplot(., aes(x = delta14 , y = rel14, group = USPS)) +
+	geom_point(color= 'gray',shape=1) +
+	geom_path(color= 'gray') +
+	geom_point(data=filter(., USPS %in% incstates), aes(group=USPS, color=USPS), shape=1) +	
+	geom_path(data=filter(., USPS %in% incstates), aes(group=USPS, color=USPS),alpha=1) +	
+	geom_hline(yintercept = 0)	+	
+  scale_x_log10(limits=c(10,NA), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+	scale_y_continuous(limits=c(-1,3), labels = scales::percent_format(accuracy = 1)) +
+	labs(title="New Cases/Capita and Acceleration", subtitle = paste("Covid19 pandemic","-",date()), x="New cases/capita in 2 weeks", y="Relative Increase (%)") +
+	theme_bw() }	-> p4
 
-  grid.arrange(p3, nrow=1)
+
+  grid.arrange(p3, p4, nrow=1)
 
 ```
 
