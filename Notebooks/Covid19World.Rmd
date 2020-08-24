@@ -335,7 +335,7 @@ df25 %>% filter(Metric == 'Confirmed') %>%
 	{
 	ggplot(., aes(x=Date, y=NewCases)) +
   geom_point(shape=1, size=2) + 
-	geom_smooth(formula ='y ~ x',method = 'loess', span=0.70, se=FALSE) +
+	geom_smooth(formula ='y ~ x',method = 'loess', span=0.50, se=FALSE) +
 	geom_label_repel(data=filter(., Date==max(Date) | NewCases==max(NewCases) ), aes(label = paste(ks(NewCases,0.1), sep=',')), nudge_x=2) +
 	scale_x_date() +
 	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
@@ -381,7 +381,7 @@ df2 %>% filter(Metric == 'Confirmed') %>%
 ```
 
 
-This second table below shows a ranked list of countries with new confirmed cases per capita per week. as in the previous table, tt shows the new cases in the last week from the date on the upper left, but this time per 100k people. It also shows the maximum cases per capita per week and when that peak happened. In addition it shows the relative decrease in number of weekly cases compared to the peak
+This second table below shows a ranked list of countries with new confirmed cases per capita per week. as in the previous table, it shows the new cases in the last week from the date on the upper left, but this time per 100k people. It also shows the maximum cases per capita per week and when that peak happened. In addition it shows the relative decrease in number of weekly cases compared to the peak
 
 
 ```{r,fig.width=13}
@@ -442,7 +442,7 @@ df25 %>% filter(Metric == 'Confirmed') %>%
 	ggplot(., aes(x=Date, y=NewCases,color=`Country/Region`)) +
   geom_point(shape=1, size=2) + 
 	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
-	geom_label_repel(data=filter(., Date==max(Date) | NewCases==max(NewCases) ), aes(label = paste(`Country/Region`,ks(NewCases,0.01), sep=',')), nudge_x=2) +
+	geom_label_repel(data=filter(., Date==max(Date) | NewCases==max(NewCases) ), aes(label = paste(`Country/Region`,ks(NewCases,0.1), sep=',')), nudge_x=2) +
 	scale_x_date() +
 	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
 	labs(title="New Confirmed New Cases per Day", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="New Cases/day") +

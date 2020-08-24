@@ -89,6 +89,59 @@ Distance <- function(lat1,lon1,lat2,lon2){
   acos( sin(phi1)* sin(phi2) + cos(phi1)*cos(phi2) * cos(dlambda) ) * R;
 }
 
+#' log scale
+#'
+#' Creates a function which returns ticks for a given data range. It uses some
+#' code from scales::log_breaks, but in contrast to that function it not only
+#' the exponentials of the base b, but log minor ticks (f*b^i, where f and i are 
+#' integers), too.
+#'
+#' @param n Approximate number of ticks to produce
+#' @param base Logarithm base
+#'
+#' @return
+#'
+#' A function which expects one parameter:
+#'
+#' * **x**: (numeric vector) The data for which to create a set of ticks.
+#'
+#' @export
+logTicks <- function(n = 5, base = 10){
+  # Divisors of the logarithm base. E.g. for base 10: 1, 2, 5, 10.
+  divisors <- which((base / seq_len(base)) %% 1 == 0)
+  mkTcks <- function(min, max, base, divisor){
+    f <- seq(divisor, base, by = divisor)
+    return(unique(c(base^min, as.vector(outer(f, base^(min:max), `*`)))))
+  }
+
+  function(x) {
+    rng <- range(x, na.rm = TRUE)
+    lrng <- log(rng, base = base)
+    min <- floor(lrng[1])
+    max <- ceiling(lrng[2])
+
+    tck <- function(divisor){
+      t <- mkTcks(min, max, base, divisor)
+      t[t >= rng[1] & t <= rng[2]]
+    }
+    # For all possible divisors, produce a set of ticks and count how many ticks
+    # result
+    tcks <- lapply(divisors, function(d) tck(d))
+    l <- vapply(tcks, length, numeric(1))
+
+    # Take the set of ticks which is nearest to the desired number of ticks
+    i <- which.min(abs(n - l))
+    if(l[i] < 2){
+      # The data range is too small to show more than 1 logarithm tick, fall
+      # back to linear interpolation
+      ticks <- pretty(x, n = n, min.n = 2)
+    }else{
+      ticks <- tcks[[i]]
+    }
+    return(ticks)
+  }
+}
+
 ```
 
 
@@ -363,7 +416,8 @@ USStates.Covid19.all %>%
       geom_point(shape=1, size=2) + 
 	    geom_smooth(formula ='y ~ x',method = 'loess', span=0.40) +
       scale_x_date(date_breaks="1 month", date_labels = "%b") +
-	    scale_y_log10(limits=c(100,10^5), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+	    scale_y_log10(limits=c(100,10^5), breaks = logTicks(n=4),  minor_breaks = logTicks(n=40), labels = trans_format("log10", math_format(10^.x))) +
+	    annotation_logticks(sides="tl") +
 	    labs(title="USA Cases and Deaths per Day", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Count") +
 	    theme_bw() 
 ```
@@ -582,7 +636,9 @@ USStates.Covid19 %>%
   stat_function(color = "orange", fun = Zone, args=list(c=10^4), show.legend =F, xlim = c(1, 5)) +  
 	stat_function(color = "yellow", fun = Zone, args=list(c=10^3), show.legend =F, xlim = c(1, 5)) +  
   stat_function(color = "green", fun = Zone, args=list(c=10^2), show.legend =F, xlim = c(1, 5)) +  
-  scale_x_log10(limits=c(10,NA), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+  #scale_x_log10(limits=c(10,NA), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+	scale_x_log10(limits=c(10,NA), breaks = logTicks(n=5),  minor_breaks = logTicks(n=50), labels = trans_format("log10", math_format(10^.x))) +
+	annotation_logticks(sides="b") +
 	scale_y_continuous(limits=c(-1,3), labels = scales::percent_format(accuracy = 1)) +
 	labs(title="New Cases and Acceleration", subtitle = paste("Covid19 pandemic","-",date()), x="New cases in 2 weeks", y="Relative Increase (%)") +
 	theme_bw() + theme(legend.position = "none") -> p1
@@ -597,7 +653,9 @@ USStates.Covid19 %>%
   stat_function(color = "red", fun = Zone, args=list(c=10^3), show.legend =F, xlim = c(1, 3)) +  
   stat_function(color = "orange", fun = Zone, args=list(c=10^2), show.legend =F, xlim = c(1, 3)) +  
 	stat_function(color = "green", fun = Zone, args=list(c=10^1), show.legend =F, xlim = c(1, 3)) +  
-  scale_x_log10(limits=c(10,NA), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+  #scale_x_log10(limits=c(10,NA), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+	scale_x_log10(limits=c(10,NA), breaks = logTicks(n=3),  minor_breaks = logTicks(n=30), labels = trans_format("log10", math_format(10^.x))) +
+	annotation_logticks(sides="b") +
 	scale_y_continuous(limits=c(-1,3), labels = scales::percent_format(accuracy = 1)) +
 	labs(title="New Cases per Capita (100k) and Acceleration", subtitle = paste("Covid19 pandemic","-",date()), x="New cases/Capita in 2 weeks", y="Relative Increase (%)") +
 	theme_bw() + theme(legend.position = "none") -> p2
@@ -610,7 +668,7 @@ USStates.Covid19 %>%
 ####################################################################
 # New Cases per  vs increase in new cases in the last 2 weeks 
 incstates <- c('MA','NY','NH', 'CT', 'ME', 'VT', 'CA','FL','TX','AZ')
-incstates <- c('MA','FL', 'NY')
+incstates <- c('MA','FL', 'NY','AZ')
 
 USStates.Covid19.all %>%
 	filter(Metric == "Confirmed", Metric2 %in% c('delta14', 'rel14')) %>% 
@@ -640,7 +698,9 @@ USStates.Covid19.all %>%
 	geom_point(data=filter(., USPS %in% incstates), aes(group=USPS, color=USPS), shape=1) +	
 	geom_path(data=filter(., USPS %in% incstates), aes(group=USPS, color=USPS),alpha=1) +	
 	geom_hline(yintercept = 0)	+	
-  scale_x_log10(limits=c(10,NA), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+  #scale_x_log10(limits=c(10,NA), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+	scale_x_log10(limits=c(10,NA), breaks = logTicks(n=2),  minor_breaks = logTicks(n=20), labels = trans_format("log10", math_format(10^.x))) +
+	annotation_logticks(sides="b") +
 	scale_y_continuous(limits=c(-1,3), labels = scales::percent_format(accuracy = 1)) +
 	labs(title="New Cases/Capita and Acceleration", subtitle = paste("Covid19 pandemic","-",date()), x="New cases/capita in 2 weeks", y="Relative Increase (%)") +
 	theme_bw() }	-> p4
@@ -705,8 +765,9 @@ USStates.Covid19.all %>%
 	    geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
       geom_label_repel(data = filter(., Date == max(Date)), aes(label = paste(USPS,ks(val,0.1),sep=",")), nudge_x=2) +
       scale_x_date(date_breaks="1 month", date_labels = "%b", date_minor_breaks = "1 week") +
-	    scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
-                    labels = trans_format("log10", math_format(10^.x))) +
+	    #scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+	  	scale_y_log10(breaks = logTicks(n=6),  minor_breaks = logTicks(n=60), labels = trans_format("log10", math_format(10^.x))) +
+	    annotation_logticks(sides="l") +
 	    labs(title="Confirmed Cases for top 25 US States", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
 	    theme_bw() + theme(legend.position = "none")
 	}
@@ -728,7 +789,9 @@ USStates.Covid19.all %>%
 	  geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
     geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(USPS, ns(val,1), sep=":")), nudge_x=2) +
 	  scale_x_date(date_breaks="1 month", date_labels = "%b", date_minor_breaks = "1 week") +
-	  scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+	  #scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+  	scale_y_log10(breaks = logTicks(n=4),  minor_breaks = logTicks(n=40), labels = trans_format("log10", math_format(10^.x))) +
+	  annotation_logticks(sides="l") +
 	  labs(title="New Confirmed Cases for top 25 US States", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
 	  theme_bw() + theme(legend.position = "none")
 	}
@@ -885,8 +948,9 @@ USCounties.Covid19.all %>%
 	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
 	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(CTYNAME,USPS,ks(val,0.1),sep=",")), nudge_x=2) +
 	scale_x_date(date_breaks="1 month", date_labels = "%b", date_minor_breaks = "1 week") +
-	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
-                labels = trans_format("log10", math_format(10^.x))) +
+	#scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),labels = trans_format("log10", math_format(10^.x))) +
+	scale_y_log10(breaks = logTicks(n=5),  minor_breaks = logTicks(n=50), labels = trans_format("log10", math_format(10^.x))) +
+	annotation_logticks(sides="l") +
 	labs(title="Confirmed Cases per Top US County", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
 	theme_bw() + theme(legend.position = "none")
 	}
@@ -908,8 +972,8 @@ USCounties.Covid19.all %>%
 	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
 	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(CTYNAME,ks(val,0.01),sep=",")), nudge_x=2) +
   scale_x_date(date_breaks="1 month", date_labels = "%b", date_minor_breaks = "1 week") +
-	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
-                labels = trans_format("log10", math_format(10^.x))) +
+	scale_y_log10(breaks = logTicks(n=5),  minor_breaks = logTicks(n=50), labels = trans_format("log10", math_format(10^.x))) +
+	annotation_logticks(sides="l") +
 	labs(title="Confirmed Cases in MA", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
 	theme_bw() 
 	}
@@ -940,8 +1004,8 @@ USCounties.Covid19.all %>%
 	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
 	geom_label_repel(data=filter(., Date==max(Date)), aes(label = paste(CTYNAME, USPS, ks(val,0.01),sep=",")), nudge_x=2) +
   scale_x_date(date_breaks="1 month", date_labels = "%b", date_minor_breaks = "1 week") +
-	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
-                labels = trans_format("log10", math_format(10^.x))) +
+	scale_y_log10(breaks = logTicks(n=5),  minor_breaks = logTicks(n=50), labels = trans_format("log10", math_format(10^.x))) +
+	annotation_logticks(sides="l") +
 	labs(title="Confirmed Cases near NBPT", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
 	theme_bw() + theme(legend.position = "none")
 	}
@@ -1010,10 +1074,10 @@ USCounties.Covid19.all %>%
 	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
 	geom_label_repel(data=filter(., Date==max(Date) | val==max(val)), aes(label = paste(CTYNAME, USPS, val,sep=",")), nudge_x=2) +
   scale_x_date(date_breaks="1 month", date_labels = "%b", date_minor_breaks = "1 week") +
-	  scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
-                  labels = trans_format("log10", math_format(10^.x))) +
-	  labs(title="New Confirmed Cases per Day near NBPT", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases/Day") +
-	  theme_bw() + theme(legend.position = "none")
+	scale_y_log10(breaks = logTicks(n=5),  minor_breaks = logTicks(n=50), labels = trans_format("log10", math_format(10^.x))) +
+	annotation_logticks(sides="l") +
+	labs(title="New Confirmed Cases per Day near NBPT", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases/Day") +
+	theme_bw() + theme(legend.position = "none")
 	  }
 ```
 
@@ -1032,10 +1096,11 @@ USCounties.Covid19.all %>%
   geom_point(shape=1, size=3) + 
 	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
 	geom_label_repel(data=filter(., Date==max(Date) | val==max(val)), aes(label = paste(CTYNAME, USPS, round(val,2), sep=",")), nudge_x=2) +
-	scale_x_date() +
-	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
-	  labs(title="New Cases / Capita per Day near NBPT", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases/Capita/Day") +
-	  theme_bw() + theme(legend.position = "none")
+  scale_x_date(date_breaks="1 month", date_labels = "%b", date_minor_breaks = "1 week") +
+	scale_y_log10(breaks = logTicks(n=5),  minor_breaks = logTicks(n=50), labels = trans_format("log10", math_format(10^.x))) +
+	annotation_logticks(sides="l") +
+	labs(title="New Cases / Capita per Day near NBPT", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases/Capita/Day") +
+	theme_bw() + theme(legend.position = "none")
 	  }
 ```
 
@@ -1057,8 +1122,8 @@ USCounties.Covid19.all %>%
 	geom_smooth(formula ='y ~ x',method = 'loess', span=0.40, se=FALSE) +
 	geom_label_repel(data=filter(., Date==max(Date) | val==max(val)), aes(label = paste(CTYNAME,USPS,val,sep=",")), nudge_x=2) +
   scale_x_date(date_breaks="1 month", date_labels = "%b", date_minor_breaks = "1 week") +
-	scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
-                labels = trans_format("log10", math_format(10^.x))) +
+	scale_y_log10(breaks = logTicks(n=5),  minor_breaks = logTicks(n=50), labels = trans_format("log10", math_format(10^.x))) +
+	annotation_logticks(sides="l") +
 	labs(title="New Confirmed Cases per Top US County", subtitle = paste("Covid19 pandemic","-",date()), x="Time(2020)", y="Cases") +
 	theme_bw() + theme(legend.position = "none")
 	}		
@@ -1256,8 +1321,11 @@ USStates.Covid19.all %>%
 	ggplot(aes(x = Confirmed, y = Deaths, colour = STNAME)) +
 	geom_point(aes( size = POPESTIMATE2019)) +
 	#geom_label_repel(aes(label = USPS)) +
-	scale_x_log10(limits=c(100,NA), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
-	scale_y_log10(limits=c(10,NA), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+#	scale_x_log10(limits=c(100,NA), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+	scale_x_log10(breaks = logTicks(n=5),  minor_breaks = logTicks(n=50), labels = trans_format("log10", math_format(10^.x))) +
+	scale_y_log10(breaks = logTicks(n=5),  minor_breaks = logTicks(n=50), labels = trans_format("log10", math_format(10^.x))) +
+	annotation_logticks(sides="lb") +
+	#scale_y_log10(limits=c(10,NA), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
 	#theme(legend.position = "none") +
 	transition_time(Date, range=c(date("2020-03-01"),max(USStates.Covid19.all$Date))) +
   ease_aes('linear') +
@@ -1272,8 +1340,11 @@ USStates.Covid19.all %>%
 	ggplot(aes(x = Confirmed, y = Deaths, colour = STNAME)) +
 	geom_point(aes( size = POPESTIMATE2019)) +
 	#geom_label_repel(aes(label = USPS)) +
-	scale_x_log10(limits=c(100,NA), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
-	scale_y_log10(limits=c(10,NA), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+#	scale_x_log10(limits=c(100,NA), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+#	scale_y_log10(limits=c(10,NA), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+	scale_x_log10(breaks = logTicks(n=5),  minor_breaks = logTicks(n=50), labels = trans_format("log10", math_format(10^.x))) +
+	scale_y_log10(breaks = logTicks(n=5),  minor_breaks = logTicks(n=50), labels = trans_format("log10", math_format(10^.x))) +
+	annotation_logticks(sides="lb") +
 	#theme(legend.position = "none") +
 	transition_time(Date, range=c(date("2020-03-01"),max(USStates.Covid19.all$Date))) +
   ease_aes('linear') +
@@ -1307,7 +1378,9 @@ USStates.Covid19.all %>%
 	pivot_wider(names_from="Metric2", values_from="val") %>% 
   ggplot(aes(x = delta14 , y = rel14)) +
   geom_point(aes(size= POPESTIMATE2019, color= USPS )) +
-  scale_x_continuous(limits=c(10,NA), trans="log10",breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+  #scale_x_continuous(limits=c(10,NA), trans="log10",breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+	scale_x_log10(breaks = logTicks(n=5),  minor_breaks = logTicks(n=50), labels = trans_format("log10", math_format(10^.x))) +
+	annotation_logticks(sides="b") +
 	scale_y_continuous(limits=c(-1,5), trans="identity", labels = scales::percent_format(accuracy = 1)) +
 	labs(title="New Cases and Acceleration", subtitle = paste("Covid19 pandemic","-",date()), x="New cases in 2 weeks", y="Relative Increase (%)") +
 	theme_bw() + 
@@ -1323,7 +1396,9 @@ USStates.Covid19.all %>%
 	mutate(delta14 = 10^5 * delta14 / POPESTIMATE2019) %>% 
   ggplot(aes(x = delta14 , y = rel14)) +
   geom_point(aes(size= POPESTIMATE2019, color= USPS )) +
-  scale_x_continuous(limits=c(10,NA), trans="log10",breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+  #scale_x_continuous(limits=c(10,NA), trans="log10",breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+	scale_x_log10(breaks = logTicks(n=5),  minor_breaks = logTicks(n=50), labels = trans_format("log10", math_format(10^.x))) +
+	annotation_logticks(sides="b") +
 	scale_y_continuous(limits=c(-1,5), trans="identity", labels = scales::percent_format(accuracy = 1)) +
 	labs(title="New Cases per Capita and Acceleration", subtitle = paste("Covid19 pandemic","-",date()), x="New cases per Capita in 2 weeks", y="Relative Increase (%)") +
 	theme_bw() + 
